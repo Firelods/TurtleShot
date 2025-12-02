@@ -1,0 +1,23 @@
+[0.690s] Invoking command in '/home/bilbo/ros2_ws/src/py_talker/build/py_talker': PYTHONPATH=/home/bilbo/ros2_ws/src/py_talker/build/py_talker/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/bilbo/ros2_ws/src/py_talker/install/py_talker/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/bilbo/ros2_ws/src/py_talker/build/py_talker/build --no-deps symlink_data
+[0.895s] running develop
+[1.003s] running egg_info
+[1.003s] creating py_talker.egg-info
+[1.004s] writing py_talker.egg-info/PKG-INFO
+[1.004s] writing dependency_links to py_talker.egg-info/dependency_links.txt
+[1.004s] writing entry points to py_talker.egg-info/entry_points.txt
+[1.004s] writing requirements to py_talker.egg-info/requires.txt
+[1.004s] writing top-level names to py_talker.egg-info/top_level.txt
+[1.004s] writing manifest file 'py_talker.egg-info/SOURCES.txt'
+[1.006s] reading manifest file 'py_talker.egg-info/SOURCES.txt'
+[1.006s] writing manifest file 'py_talker.egg-info/SOURCES.txt'
+[1.007s] running build_ext
+[1.008s] Creating /home/bilbo/ros2_ws/src/py_talker/install/py_talker/lib/python3.10/site-packages/py-talker.egg-link (link to .)
+[1.008s] 
+[1.009s] Installed /home/bilbo/ros2_ws/src/py_talker/build/py_talker
+[1.009s] running symlink_data
+[1.009s] creating /home/bilbo/ros2_ws/src/py_talker/install/py_talker/share/ament_index
+[1.009s] creating /home/bilbo/ros2_ws/src/py_talker/install/py_talker/share/ament_index/resource_index
+[1.009s] creating /home/bilbo/ros2_ws/src/py_talker/install/py_talker/share/ament_index/resource_index/packages
+[1.010s] symbolically linking /home/bilbo/ros2_ws/src/py_talker/build/py_talker/resource/py_talker -> /home/bilbo/ros2_ws/src/py_talker/install/py_talker/share/ament_index/resource_index/packages
+[1.010s] symbolically linking /home/bilbo/ros2_ws/src/py_talker/build/py_talker/package.xml -> /home/bilbo/ros2_ws/src/py_talker/install/py_talker/share/py_talker
+[1.045s] Invoked command in '/home/bilbo/ros2_ws/src/py_talker/build/py_talker' returned '0': PYTHONPATH=/home/bilbo/ros2_ws/src/py_talker/build/py_talker/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/bilbo/ros2_ws/src/py_talker/install/py_talker/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/bilbo/ros2_ws/src/py_talker/build/py_talker/build --no-deps symlink_data

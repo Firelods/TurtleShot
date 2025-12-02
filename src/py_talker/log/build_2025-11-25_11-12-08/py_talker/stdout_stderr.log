@@ -1,0 +1,21 @@
+running develop
+running egg_info
+creating py_talker.egg-info
+writing py_talker.egg-info/PKG-INFO
+writing dependency_links to py_talker.egg-info/dependency_links.txt
+writing entry points to py_talker.egg-info/entry_points.txt
+writing requirements to py_talker.egg-info/requires.txt
+writing top-level names to py_talker.egg-info/top_level.txt
+writing manifest file 'py_talker.egg-info/SOURCES.txt'
+reading manifest file 'py_talker.egg-info/SOURCES.txt'
+writing manifest file 'py_talker.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/bilbo/ros2_ws/src/py_talker/install/py_talker/lib/python3.10/site-packages/py-talker.egg-link (link to .)
+
+Installed /home/bilbo/ros2_ws/src/py_talker/build/py_talker
+running symlink_data
+creating /home/bilbo/ros2_ws/src/py_talker/install/py_talker/share/ament_index
+creating /home/bilbo/ros2_ws/src/py_talker/install/py_talker/share/ament_index/resource_index
+creating /home/bilbo/ros2_ws/src/py_talker/install/py_talker/share/ament_index/resource_index/packages
+symbolically linking /home/bilbo/ros2_ws/src/py_talker/build/py_talker/resource/py_talker -> /home/bilbo/ros2_ws/src/py_talker/install/py_talker/share/ament_index/resource_index/packages
+symbolically linking /home/bilbo/ros2_ws/src/py_talker/build/py_talker/package.xml -> /home/bilbo/ros2_ws/src/py_talker/install/py_talker/share/py_talker
