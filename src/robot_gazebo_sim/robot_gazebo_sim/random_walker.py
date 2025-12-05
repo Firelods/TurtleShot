@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 Random Walker for Gazebo Simulation
-Implements random walking behavior with obstacle avoidance
-Works with Gazebo physics - only publishes cmd_vel commands
+Publishes velocity commands while avoiding obstacles.
 """
 
 import rclpy
@@ -16,72 +15,84 @@ import random
 class RandomWalker(Node):
     def __init__(self):
         super().__init__('random_walker')
-        
-        # Random Walker State
-        self.state = 'FORWARD'  # FORWARD, TURN
-        self.turn_direction = 1  # 1: Left, -1: Right
-        self.turn_start_time = 0
-        self.min_obstacle_dist = 0.6
-        
-        # Publishers - Use relative topics
-        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
-        
-        # Subscribers - Use SensorData QoS for Gazebo compatibility
-        self.create_subscription(LaserScan, 'scan', self.scan_callback, qos_profile_sensor_data)
-        
-        # Timer for random walker logic (10Hz)
-        self.create_timer(1.0/10.0, self.control_logic)
-        
-        self.get_logger().info('Random Walker Started')
 
-    def scan_callback(self, msg):
-        """Check for obstacles in front and update state"""
+        # ----- State ---------------------------------------------------------
+        self.state = 'FORWARD'          # FORWARD or TURN
+        self.turn_direction = 1         # 1 = left, -1 = right
+        self.turn_start_time = 0
+        self.min_obstacle_dist = 0.6    # metres
+
+        # ----- Publishers ----------------------------------------------------
+        # Publish on the *global* /cmd_vel topic (matches Gazebo diff_drive_controller)
+        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+
+        # ----- Subscribers ---------------------------------------------------
+        # Use Best‑Effort QoS for laser scans (matches Gazebo)
+        self.create_subscription(
+            LaserScan,
+            'scan',                     # relative topic – will be remapped by launch if needed
+            self.scan_callback,
+            qos_profile_sensor_data,
+        )
+
+        # ----- Timer ---------------------------------------------------------
+        # Use the node's clock (will be simulation clock when use_sim_time=True)
+        self.create_timer(0.2, self.control_logic, clock=self.get_clock())
+
+        # ----- Logging -------------------------------------------------------
+        self.get_logger().info(
+            f'Random Walker started (namespace: {self.get_namespace()})'
+        )
+
+    # ----------------------------------------------------------------------
+    def scan_callback(self, msg: LaserScan):
+        """Detect obstacles in front of the robot."""
         num_ranges = len(msg.ranges)
         if num_ranges == 0:
             return
 
-        # Check front sector (+/- 30 degrees)
+        # Look at a 60° sector centered on the front (+/- 30°)
+        sector = int(num_ranges / 6)
         min_dist = float('inf')
-        sector_size = int(num_ranges / 6)  # 60 degrees total
-        
-        for i in range(sector_size):
-            # Check positive angles (left)
+        for i in range(sector):
+            # Positive angles (left side)
             r = msg.ranges[i]
             if msg.range_min < r < msg.range_max:
                 min_dist = min(min_dist, r)
-                
-            # Check negative angles (right) - wrap around
-            r = msg.ranges[num_ranges - 1 - i]
+
+            # Negative angles (right side) – wrap around
+            r = msg.ranges[-1 - i]
             if msg.range_min < r < msg.range_max:
                 min_dist = min(min_dist, r)
-        
-        # Update state based on obstacles
-        old_state = self.state
-        if min_dist < self.min_obstacle_dist:
-            if self.state == 'FORWARD':
-                self.state = 'TURN'
-                self.turn_direction = random.choice([-1, 1])
-                self.turn_start_time = self.get_clock().now().nanoseconds
-                self.get_logger().info(f'Obstacle detected ({min_dist:.2f}m)! Turning...')
-        
+
+        # If something is too close, switch to TURN state
+        if min_dist < self.min_obstacle_dist and self.state == 'FORWARD':
+            self.state = 'TURN'
+            self.turn_direction = random.choice([-1, 1])
+            self.turn_start_time = self.get_clock().now().nanoseconds
+            self.get_logger().info(
+                f'Obstacle detected ({min_dist:.2f} m) – turning '
+                f'{"left" if self.turn_direction == 1 else "right"}'
+            )
+
+    # ----------------------------------------------------------------------
     def control_logic(self):
-        """Generate velocity commands based on current state"""
+        """Publish Twist messages based on the current state."""
         msg = Twist()
-        
+
         if self.state == 'FORWARD':
-            msg.linear.x = 0.2  # Move forward slowly
+            msg.linear.x = 0.2          # slow forward motion
             msg.angular.z = 0.0
         elif self.state == 'TURN':
             msg.linear.x = 0.0
             msg.angular.z = 0.5 * self.turn_direction
-            
-            # Turn for at least 1 second
-            current_time = self.get_clock().now().nanoseconds
-            if (current_time - self.turn_start_time) > 1e9:  # 1 second
-                # Try to go forward again
+
+            # After ~1 s of turning, try to go forward again
+            now = self.get_clock().now().nanoseconds
+            if (now - self.turn_start_time) > 1_000_000_000:  # 1 s
                 self.state = 'FORWARD'
-                self.get_logger().info('Path clear, moving forward')
-        
+                self.get_logger().info('Path clear – moving forward')
+
         self.cmd_vel_pub.publish(msg)
 
 

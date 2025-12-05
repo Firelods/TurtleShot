@@ -57,9 +57,9 @@ def generate_launch_description():
 
     # WSL-optimized environment variables for Gazebo GUI
     gazebo_env = {
-        'LIBGL_ALWAYS_SOFTWARE': '1',  # Force software rendering for stability
-        'MESA_GL_VERSION_OVERRIDE': '3.3',  # Use OpenGL 3.3 for compatibility
-        'MESA_GLSL_VERSION_OVERRIDE': '330',
+        'LIBGL_ALWAYS_SOFTWARE': '0',  # HARDWARE ACCELERATION ENABLED (Disabled forced software rendering)
+        # 'MESA_GL_VERSION_OVERRIDE': '3.3',  # Commented out to allow driver defaults
+        # 'MESA_GLSL_VERSION_OVERRIDE': '330', # Commented out to allow driver defaults
         'GAZEBO_MODEL_PATH': os.path.join(pkg_robot_gazebo_sim, 'models'),
         'GAZEBO_RESOURCE_PATH': '/usr/share/gazebo-11',
         'OGRE_RTShader_Write': '1',
@@ -67,7 +67,7 @@ def generate_launch_description():
 
     # 1. Start Gazebo Server
     gzserver = ExecuteProcess(
-        cmd=['gzserver', '--verbose', '-s', 'libgazebo_ros_factory.so', world_file],
+        cmd=['gzserver', '--verbose', '-s', 'libgazebo_ros_factory.so', '-s', 'libgazebo_ros_init.so', world_file],
         output='screen',
         shell=False,
         additional_env=gazebo_env
