@@ -188,7 +188,7 @@
   <joint name="joint_oak_d_pro_camera" type="fixed">
     <parent link="base_link"/>
     <child link="oak_d_pro_camera"/>
-    <origin xyz="0.065 0.0 0.11" rpy="1.57 0.0 1.57"/> 
+    <origin xyz="0.065 0.0 0.11" rpy="0.0 0.0 0.0"/> 
   </joint>
 
   <link name="oak_d_pro_color_optical_frame"/>   
