@@ -1,0 +1,5 @@
+# .gitignore for ROS2 workspace
+# Ignore colcon build artifacts
+build/
+install/
+log/
