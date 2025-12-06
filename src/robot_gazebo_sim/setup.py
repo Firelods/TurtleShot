@@ -20,6 +20,23 @@ setup(
         (os.path.join('share', package_name, 'urdf'), glob('urdf/*.urdf')),
         # Include scripts
         (os.path.join('share', package_name, 'scripts'), glob('scripts/*.sh')),
+        
+        # INSTALL ALL MESHES RECURSIVELY
+        ('share/' + package_name + '/meshes/catapaf', [
+            'meshes/catapaf/baseEtServo.stl',
+            'meshes/catapaf/catapaf.stl'
+        ]),
+        # install subfolders too:
+        ('share/' + package_name + '/meshes/bases', [
+            'meshes/bases/burger_base.stl'
+        ]),
+        ('share/' + package_name + '/meshes/wheels', [
+            'meshes/wheels/left_tire.stl',
+            'meshes/wheels/right_tire.stl'
+        ]),
+        ('share/' + package_name + '/meshes/sensors', [
+            'meshes/sensors/OAK-D-PRO.stl',
+        ])
     ],
     install_requires=['setuptools'],
     zip_safe=True,

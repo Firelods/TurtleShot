@@ -12,7 +12,7 @@ def generate_launch_description():
     pkg_robot_gazebo_sim = get_package_share_directory('robot_gazebo_sim')
     
     # Paths
-    urdf_file = os.path.join(pkg_robot_gazebo_sim, 'urdf', 'turtlebot3_burger.urdf')
+    urdf_file = os.path.join(pkg_robot_gazebo_sim, 'urdf', 'turtlebot_with_catapaf.urdf')
     world_file = os.path.join(pkg_robot_gazebo_sim, 'worlds', 'turtlebot3_world.world')
     
     # Declare launch arguments
