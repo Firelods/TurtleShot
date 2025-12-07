@@ -18,6 +18,16 @@ def generate_launch_description():
     urdf_file = os.path.join(pkg_catapaf_description, 'urdf', 'turtlebot_with_catapaf_gz.urdf.xacro')
     bridge_config = os.path.join(pkg_catapaf_gazebo, 'config', 'catapaf_bridge.yaml')
 
+    # Read and process URDF to replace package:// URIs with file:// URIs
+    # This is needed because Gazebo Ignition doesn't support package:// URIs
+    with open(urdf_file, 'r') as f:
+        robot_description_content = f.read()
+
+    # Replace package:// URIs with file:// URIs using absolute paths
+    robot_description_content = robot_description_content.replace(
+        'package://catapaf_description/',
+        f'file://{pkg_catapaf_description}/'
+    )
     # Launch Arguments
     declare_world_arg = DeclareLaunchArgument(
         'world',
@@ -48,13 +58,22 @@ def generate_launch_description():
         default_value='true',
         description='Use simulation time'
     )
-
+    ign_resource_path = os.pathsep.join([
+        os.path.join(pkg_catapaf_description),
+        os.path.join(pkg_catapaf_description, 'meshes'),
+        os.environ.get('IGN_GAZEBO_RESOURCE_PATH', '')
+    ])
     # Set IGN_GAZEBO_RESOURCE_PATH for meshes
     set_ign_resource_path = SetEnvironmentVariable(
         name='IGN_GAZEBO_RESOURCE_PATH',
         value=os.path.join(pkg_catapaf_description, 'meshes')
     )
 
+    # Also set GZ_SIM_RESOURCE_PATH for newer Gazebo versions
+    set_gz_resource_path = SetEnvironmentVariable(
+        name='GZ_SIM_RESOURCE_PATH',
+        value=ign_resource_path
+    )
     # Gazebo Sim Launch (HEADLESS - no GUI)
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -100,7 +119,21 @@ def generate_launch_description():
             '--ros-args',
             '-p', f'config_file:={bridge_config}'
         ],
-        output='screen'
+        output='screen',
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
+    )
+
+    # Foxglove Bridge for web visualization
+    foxglove_bridge = Node(
+        package='foxglove_bridge',
+        executable='foxglove_bridge',
+        name='foxglove_bridge',
+        output='screen',
+        parameters=[
+            {'port': 8765},
+            {'use_sim_time': LaunchConfiguration('use_sim_time')},
+            {'send_buffer_limit': 10000000}
+        ]
     )
 
     return LaunchDescription([
@@ -113,10 +146,12 @@ def generate_launch_description():
 
         # Environment
         set_ign_resource_path,
+        set_gz_resource_path,
 
         # Nodes
         gazebo,
         robot_state_publisher,
         spawn_robot,
+        foxglove_bridge,
         ros_gz_bridge,
     ])

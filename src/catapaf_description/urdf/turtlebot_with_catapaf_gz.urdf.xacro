@@ -301,8 +301,7 @@
             <wheel_radius>0.033</wheel_radius>
             <odom_publish_frequency>30</odom_publish_frequency>
             <topic>cmd_vel</topic>
-            <odom_topic>odom</odom_topic>
-            <tf_topic>/tf</tf_topic>
+            <odom_topic>odometry</odom_topic>
             <frame_id>odom</frame_id>
             <child_frame_id>base_footprint</child_frame_id>
             <max_linear_acceleration>1.0</max_linear_acceleration>
@@ -323,6 +322,9 @@
         <sensor name="lds_lfcd_sensor" type="gpu_lidar">
             <topic>scan</topic>
             <update_rate>10</update_rate>
+            <frame_id>base_scan</frame_id>
+            <frame>base_scan</frame>
+            <pose>0 0 0 0 0 0</pose>
             <lidar>
                 <scan>
                     <horizontal>
@@ -353,6 +355,9 @@
         <sensor name="imu" type="imu">
             <topic>imu</topic>
             <update_rate>50</update_rate>
+            <frame_id>imu_link</frame_id>
+            <frame>imu_link</frame>
+            <pose>0 0 0 0 0 0</pose>
             <imu>
                 <angular_velocity>
                     <x>
@@ -403,6 +408,11 @@
     <gazebo reference="oak_d_pro_camera">
         <sensor name="camera_sensor" type="camera">
             <topic>camera/image_raw</topic>
+            <update_rate>10</update_rate>
+            <frame_id>oak_d_pro_camera</frame_id>
+            <frame>oak_d_pro_camera</frame>
+
+            <pose>0 0 0 0 0 0</pose>
             <camera>
                 <horizontal_fov>1.3962634</horizontal_fov>
                 <image>
@@ -420,7 +430,6 @@
                     <stddev>0.007</stddev>
                 </noise>
             </camera>
-            <update_rate>10</update_rate>
             <alwaysOn>1</alwaysOn>
             <visualize>true</visualize>
         </sensor>

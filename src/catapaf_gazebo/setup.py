@@ -45,6 +45,7 @@ setup(
     entry_points={
         'console_scripts': [
             'catapaf_arm_controller = catapaf_gazebo.catapaf_arm_controller:main',
+            'odom_to_tf = catapaf_gazebo.odom_to_tf:main',
         ],
     },
 )

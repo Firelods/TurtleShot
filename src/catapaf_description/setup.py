@@ -33,6 +33,7 @@ setup(
         ]),
         ('share/' + package_name + '/meshes/sensors', [
             'meshes/sensors/OAK-D-PRO.stl',
+            'meshes/sensors/lds.stl',
         ]),
         ('share/' + package_name, ['package.xml']),
     ],

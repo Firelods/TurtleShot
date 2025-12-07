@@ -92,7 +92,8 @@
             </plugin>
 
             <!-- Visualize LiDAR -->
-            <plugin filename="VisualizeLidar" name="Visualize Lidar"></plugin>
+            <!-- Disabled: causes "Lidar pointer is not set" errors without proper entity configuration -->
+            <!-- <plugin filename="VisualizeLidar" name="Visualize Lidar"></plugin> -->
         </gui>
 
         <!-- Lighting -->

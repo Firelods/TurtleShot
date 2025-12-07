@@ -20,6 +20,17 @@ def generate_launch_description():
     urdf_file = os.path.join(pkg_catapaf_description, 'urdf', 'turtlebot_with_catapaf_gz.urdf.xacro')
     bridge_config = os.path.join(pkg_catapaf_gazebo, 'config', 'catapaf_bridge.yaml')
 
+    # Read and process URDF to replace package:// URIs with file:// URIs
+    # This is needed because Gazebo Ignition doesn't support package:// URIs
+    with open(urdf_file, 'r') as f:
+        robot_description_content = f.read()
+
+    # Replace package:// URIs with file:// URIs using absolute paths
+    robot_description_content = robot_description_content.replace(
+        'package://catapaf_description/',
+        f'file://{pkg_catapaf_description}/'
+    )
+
     # Launch Arguments
     declare_world_arg = DeclareLaunchArgument(
         'world',
@@ -58,9 +69,22 @@ def generate_launch_description():
     )
 
     # Set IGN_GAZEBO_RESOURCE_PATH for meshes
+    # Point to the share directory so model:// URIs can be resolved
+    ign_resource_path = os.pathsep.join([
+        os.path.join(pkg_catapaf_description),
+        os.path.join(pkg_catapaf_description, 'meshes'),
+        os.environ.get('IGN_GAZEBO_RESOURCE_PATH', '')
+    ])
+
     set_ign_resource_path = SetEnvironmentVariable(
         name='IGN_GAZEBO_RESOURCE_PATH',
-        value=os.path.join(pkg_catapaf_description, 'meshes')
+        value=ign_resource_path
+    )
+
+    # Also set GZ_SIM_RESOURCE_PATH for newer Gazebo versions
+    set_gz_resource_path = SetEnvironmentVariable(
+        name='GZ_SIM_RESOURCE_PATH',
+        value=ign_resource_path
     )
 
     # Gazebo Sim Launch
@@ -82,17 +106,19 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'robot_description': open(urdf_file, 'r').read()
+            'robot_description': robot_description_content
         }]
     )
 
     # Spawn Robot
+    # Use -topic instead of -file to get the robot description from robot_state_publisher
+    # This allows ROS to properly resolve package:// URIs
     spawn_robot = Node(
         package='ros_gz_sim',
         executable='create',
         arguments=[
             '-name', 'turtlebot3_burger',
-            '-file', urdf_file,
+            '-topic', '/robot_description',
             '-x', LaunchConfiguration('x_pose'),
             '-y', LaunchConfiguration('y_pose'),
             '-z', LaunchConfiguration('z_pose'),
@@ -108,7 +134,31 @@ def generate_launch_description():
             '--ros-args',
             '-p', f'config_file:={bridge_config}'
         ],
-        output='screen'
+        output='screen',
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
+    )
+
+    # Foxglove Bridge for web visualization
+    foxglove_bridge = Node(
+        package='foxglove_bridge',
+        executable='foxglove_bridge',
+        name='foxglove_bridge',
+        output='screen',
+        parameters=[
+            {'port': 8765},
+            {'use_sim_time': LaunchConfiguration('use_sim_time')},
+            {'send_buffer_limit': 10000000}
+        ]
+    )
+
+    # Odometry to TF publisher
+    # Converts /odom messages to TF transform (odom -> base_footprint)
+    odom_to_tf_node = Node(
+        package='catapaf_gazebo',
+        executable='odom_to_tf',
+        name='odom_to_tf',
+        output='screen',
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
     )
 
     # RViz2 (optional)
@@ -133,11 +183,14 @@ def generate_launch_description():
 
         # Environment
         set_ign_resource_path,
+        set_gz_resource_path,
 
         # Nodes
         gazebo,
         robot_state_publisher,
         spawn_robot,
         ros_gz_bridge,
+        foxglove_bridge,
+        odom_to_tf_node,
         # rviz2,  # Uncomment if you want RViz2
     ])
