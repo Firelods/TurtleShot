@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wsl.exe -d Ubuntu-22.04 bash -c \"dpkg -l | grep ''gz-'' | head -20\")",
+      "Bash(wsl.exe:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
