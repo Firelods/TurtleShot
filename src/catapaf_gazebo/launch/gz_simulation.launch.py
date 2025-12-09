@@ -112,6 +112,23 @@ def generate_launch_description():
        arguments=['-d', rviz_config_file]
     )
 
+    # --- CATAPAF ARM CONTROLLER ---
+    catapaf_arm_controller = Node(
+        package='catapaf_gazebo',
+        executable='catapaf_arm_controller',
+        name='catapaf_arm_controller',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}]
+    )
+
+    # --- ODOM TO TF ---
+    odom_to_tf = Node(
+        package='catapaf_gazebo',
+        executable='odom_to_tf',
+        name='odom_to_tf',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}]
+    )
 
     # --- FINAL LAUNCH DESCRIPTION ---
     return LaunchDescription([
@@ -121,5 +138,7 @@ def generate_launch_description():
         robot_state_publisher,
         spawn_robot,
         ros_gz_bridge,
+        catapaf_arm_controller,
+        odom_to_tf,
         # rviz_cmd
     ])
