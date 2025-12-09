@@ -315,55 +315,81 @@
     </link>
 
 
-    <link name="camera_link">
-      <pose>0.040 0 0.150 0 0 0</pose>
+    <!-- OAK-D Pro Camera -->
+    <link name="oak_d_pro_camera">
+      <pose>0.065 0 0.11 0 0 0</pose>
       <inertial>
         <pose>0 0 0 0 0 0</pose>
-        <mass>0.035</mass>
+        <mass>0.091</mass>
         <inertia>
-          <ixx>0.001</ixx>
-          <ixy>0.000</ixy>
-          <ixz>0.000</ixz>
-          <iyy>0.001</iyy>
-          <iyz>0.000</iyz>
-          <izz>0.001</izz>
+          <ixx>1e-4</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>1e-4</iyy>
+          <iyz>0.0</iyz>
+          <izz>1e-4</izz>
         </inertia>
       </inertial>
-      <collision name="camera_collision">
+
+      <collision name="oak_d_pro_collision">
+        <pose>0 -0.005 -0.01 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.001 0.001 0.001</size>
+            <size>0.1 0.03 0.02</size>
           </box>
         </geometry>
       </collision>
 
-      <sensor name='rgb_camera' type='camera'>
+      <visual name="oak_d_pro_visual">
         <pose>0 0 0 0 0 0</pose>
-        <update_rate>30</update_rate>
+        <geometry>
+          <mesh>
+            <uri>model://catapaf_common/meshes/sensors/OAK-D-PRO.stl</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <ambient>0.3 0.3 0.3 1.0</ambient>
+          <diffuse>0.3 0.3 0.3 1.0</diffuse>
+        </material>
+      </visual>
+
+      <sensor name='oak_d_pro_color' type='camera'>
+        <pose>0 0 0 0 0 0</pose>
+        <update_rate>10</update_rate>
         <always_on>1</always_on>
         <visualize>true</visualize>
-        <topic>rgb_camera/image</topic>
-        <gz_frame_id>camera_rgb_optical_frame</gz_frame_id>
+        <topic>camera/image_raw</topic>
+        <gz_frame_id>oak_d_pro_color_optical_frame</gz_frame_id>
         <camera>
-          <horizontal_fov>1.047</horizontal_fov>
+          <horizontal_fov>1.3962634</horizontal_fov>
           <image>
             <width>640</width>
             <height>480</height>
             <format>RGB_INT8</format>
           </image>
           <clip>
-            <near>0.1</near>
-            <far>100</far>
+            <near>0.15</near>
+            <far>300</far>
           </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.007</stddev>
+          </noise>
         </camera>
       </sensor>
-      <sensor name='depth_camera' type='depth_camera'>
+
+      <sensor name='oak_d_pro_depth' type='depth_camera'>
         <pose>0 0 0 0 0 0</pose>
         <update_rate>30</update_rate>
         <always_on>1</always_on>
         <visualize>true</visualize>
         <topic>depth_camera/image</topic>
-        <gz_frame_id>camera_depth_optical_frame</gz_frame_id>
+        <gz_frame_id>oak_d_pro_depth_optical_frame</gz_frame_id>
+        <output>
+          <frame_id>oak_d_pro_depth_optical_frame</frame_id>
+        </output>
         <camera>
           <horizontal_fov>1.047</horizontal_fov>
           <image>
@@ -378,21 +404,102 @@
         </camera>
       </sensor>
     </link>
-    <link name="camera_optical_frame" />
 
-    <joint name="camera_optical_joint" type="fixed">
-      <parent>camera_link</parent>
-      <child>camera_optical_frame</child>
-      <pose>0.0 0.0 0 -1.5708 0 -1.5708</pose>
-    </joint>
+    <link name="oak_d_pro_color_optical_frame" />
 
-    <link name="camera_depth_optical_frame" />
-
-    <joint name="camera_depth_optical_joint" type="fixed">
-      <parent>camera_link</parent>
-      <child>camera_depth_optical_frame</child>
+    <joint name="joint_oak_d_pro_color_optical_frame" type="fixed">
+      <parent>oak_d_pro_camera</parent>
+      <child>oak_d_pro_color_optical_frame</child>
       <pose>0 0 0 -1.5708 0 -1.5708</pose>
     </joint>
+
+    <link name="oak_d_pro_depth_optical_frame" />
+
+    <joint name="joint_oak_d_pro_depth_optical_frame" type="fixed">
+      <parent>oak_d_pro_camera</parent>
+      <child>oak_d_pro_depth_optical_frame</child>
+      <pose>0 0 0 -1.5708 0 -1.5708</pose>
+    </joint>
+
+    <!-- Catapaf Base -->
+    <link name="catapaf_base">
+      <pose>-0.03 -0.09 0.11 0 0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>0.15</mass>
+        <inertia>
+          <ixx>0.0002</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>0.0002</iyy>
+          <iyz>0.0</iyz>
+          <izz>0.0002</izz>
+        </inertia>
+      </inertial>
+
+      <collision name="catapaf_base_collision">
+        <pose>-0.02 0.02 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.08 0.05 0.03</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <visual name="catapaf_base_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://catapaf_common/meshes/catapaf/baseEtServo.stl</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <ambient>1.0 0.5 0.0 1.0</ambient>
+          <diffuse>1.0 0.5 0.0 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- Catapaf Arm -->
+    <link name="catapaf_arm">
+      <pose>-0.03 -0.098 0.11 3.14159265359 3.14159265359 0</pose>
+      <inertial>
+        <pose>0.05596964 -0.00000099 -0.00621362 0 0 0</pose>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>0.00000512</ixx>
+          <ixy>-0.00000000</ixy>
+          <ixz>0.00000175</ixz>
+          <iyy>0.00003787</iyy>
+          <iyz>0.00000000</iyz>
+          <izz>0.00003918</izz>
+        </inertia>
+      </inertial>
+
+      <collision name="catapaf_arm_collision">
+        <pose>0.05 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.12 0.05 0.03</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <visual name="catapaf_arm_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://catapaf_common/meshes/catapaf/catapaf.stl</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <ambient>0.8 0.0 0.0 1.0</ambient>
+          <diffuse>0.8 0.0 0.0 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
 
 
     <joint name="base_joint" type="fixed">
@@ -448,12 +555,40 @@
       </axis>
     </joint>
 
-    <joint name="camera_joint" type="fixed">
+    <joint name="joint_oak_d_pro_camera" type="fixed">
       <parent>base_link</parent>
-      <child>camera_link</child>
-      <pose>0 0 0 0 0 0</pose>
+      <child>oak_d_pro_camera</child>
+      <pose>0.065 0 0.11 0 0 0</pose>
       <axis>
         <xyz>0 0 1</xyz>
+      </axis>
+    </joint>
+
+    <joint name="catapaf_base_mount" type="fixed">
+      <parent>base_link</parent>
+      <child>catapaf_base</child>
+      <pose relative_to="base_link">-0.03 -0.09 0.11 0 0 0</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+      </axis>
+    </joint>
+
+    <joint name="catapaf_joint" type="revolute">
+      <parent>catapaf_base</parent>
+      <child>catapaf_arm</child>
+      <pose>0 -0.008 0 3.14159265359 3.14159265359 0</pose>
+      <axis>
+        <xyz>0 1 0</xyz>
+        <limit>
+          <lower>-1.5</lower>
+          <upper>1.3</upper>
+          <effort>1.0</effort>
+          <velocity>5.0</velocity>
+        </limit>
+        <dynamics>
+          <damping>0.1</damping>
+          <friction>0.1</friction>
+        </dynamics>
       </axis>
     </joint>
 
@@ -483,9 +618,25 @@
       <!-- <update_rate>30</update_rate> -->
       <joint_name>wheel_left_joint</joint_name>
       <joint_name>wheel_right_joint</joint_name>
+      <joint_name>catapaf_joint</joint_name>
     </plugin>
+
+    <!-- Joint Position Controller for Catapaf Arm -->
+    <plugin filename="gz-sim-joint-position-controller-system"
+      name="gz::sim::systems::JointPositionController">
+      <joint_name>catapaf_joint</joint_name>
+      <topic>catapaf_arm/position</topic>
+      <p_gain>10.0</p_gain>
+      <i_gain>0.5</i_gain>
+      <d_gain>0.5</d_gain>
+      <i_max>1.0</i_max>
+      <i_min>-1.0</i_min>
+      <cmd_max>10.0</cmd_max>
+      <cmd_min>-10.0</cmd_min>
+    </plugin>
+
     <plugin name="camera_info" filename="gz-sim-ros2-camera-system">
-      <topic>rgb_camera/camera_info</topic>
+      <topic>camera/camera_info</topic>
     </plugin>
 
   </model>

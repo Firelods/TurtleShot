@@ -121,5 +121,5 @@ def generate_launch_description():
         robot_state_publisher,
         spawn_robot,
         ros_gz_bridge,
-        rviz_cmd
+        # rviz_cmd
     ])
