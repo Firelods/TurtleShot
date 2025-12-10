@@ -1,4 +1,6 @@
+import os
 import rclpy
+from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from sensor_msgs.msg import Image, PointCloud2, PointField
 from std_msgs.msg import String
@@ -17,7 +19,8 @@ class VideoInferenceNode(Node):
         self.bridge = CvBridge()
 
         # Chargement du modèle
-        self.model = YOLO("yolo_best.pt")
+        model_path = os.path.join(get_package_share_directory("video_to_ai"), "models", "yolo_best.pt")
+        self.model = YOLO(model_path)
         self.model.fuse() 
 
         self.latest_cloud = None
