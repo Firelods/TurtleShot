@@ -2,14 +2,14 @@ import os
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
-from sensor_msgs.msg import Image, PointCloud2, PointField
+from sensor_msgs.msg import Image, PointCloud2
 from std_msgs.msg import String
-import sensor_msgs_py.point_cloud2 as pc2
-import struct
 from cv_bridge import CvBridge
 import numpy as np
 import cv2
 import json
+import struct
+import traceback
 from ultralytics import YOLO
 
 class VideoInferenceNode(Node):
@@ -20,8 +20,9 @@ class VideoInferenceNode(Node):
 
         # Chargement du modèle
         model_path = os.path.join(get_package_share_directory("video_to_ai"), "models", "yolo_best.pt")
+        self.get_logger().info(f"Chargement du modèle : {model_path}")
         self.model = YOLO(model_path)
-        self.model.fuse() 
+        # self.model.fuse() # Optionnel, accélère parfois l'inférence
 
         self.latest_cloud = None
 
@@ -55,14 +56,6 @@ class VideoInferenceNode(Node):
             10
         )
 
-
-        # Publisher PointCloud2 coloré
-        self.colored_pc_pub = self.create_publisher(
-            PointCloud2,
-            "/ia/colored_points",
-            10
-        )
-
         self.get_logger().info("video_inference_node started")
 
     def image_callback(self, msg: Image):
@@ -73,34 +66,29 @@ class VideoInferenceNode(Node):
             self.get_logger().error(f"Erreur conversion Image -> OpenCV: {e}")
             return
         
-        if self.latest_cloud is None:
-            self.get_logger().warn("Aucun nuage de points reçu pour l'instant, pas de 3D.")
-            cloud_msg = None
-        else:
-            cloud_msg = self.latest_cloud
+        # Utilisation du dernier nuage reçu
+        cloud_msg = self.latest_cloud
+        if cloud_msg is None:
+            self.get_logger().debug("Pas de nuage de points reçu pour l'instant.")
 
-        # Appel du modèle IA en local
+        # Appel du modèle IA
         try:
-            result_dict, overlay, color_mask  = self.run_inference(frame, cloud_msg)
+            result_dict, overlay = self.run_inference(frame, cloud_msg)
 
-
+            # Publication de l'overlay 2D
             overlay_msg = self.bridge.cv2_to_imgmsg(overlay, encoding="bgr8")
             overlay_msg.header = msg.header
             self.overlay_pub.publish(overlay_msg)
 
-            if cloud_msg is not None:
-                colored_cloud = self.create_colored_pointcloud(cloud_msg, color_mask)
-                if colored_cloud is not None:
-                    self.colored_pc_pub.publish(colored_cloud)
+            # Publication du résultat JSON
+            result_msg = String()
+            result_msg.data = json.dumps(result_dict)
+            self.result_pub.publish(result_msg)
 
         except Exception as e:
             self.get_logger().error(f"Erreur pendant l'inférence IA: {e}")
+            traceback.print_exc() 
             return
-
-        # Publication du résultat au format JSON
-        result_msg = String()
-        result_msg.data = json.dumps(result_dict)
-        self.result_pub.publish(result_msg)
 
 
     def pointcloud_callback(self, msg: PointCloud2):
@@ -108,7 +96,8 @@ class VideoInferenceNode(Node):
         self.latest_cloud = msg
 
     def run_inference(self, frame, cloud_msg):
-        results = self.model(frame)[0]
+        # verbose=False pour alléger la console
+        results = self.model(frame, verbose=False)[0]
 
         h, w = frame.shape[:2]
         detections = []
@@ -144,13 +133,17 @@ class VideoInferenceNode(Node):
                 else:
                     color = (0, 255, 0)      # vert
 
-                color_mask[mask_bin == 1] = color
+                indices = np.where(mask_bin == 1)
+                # Sécurité pour l'assignation numpy
+                if len(indices[0]) > 0:
+                    color_mask[indices[0], indices[1]] = color
                 
                 # Bbox
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
 
-                pos_3d = self.projection_3D(
-                    (x1, y1, x2, y2),
+                # Projection 3D en utilisant le masque de segmentation
+                pos_3d = self.projection_3D_mask(
+                    mask_bin,
                     cloud_msg,
                     h,
                     w
@@ -175,10 +168,13 @@ class VideoInferenceNode(Node):
             "detections": detections,
         }
 
-        return result_dict, overlay, color_mask
+        return result_dict, overlay
     
 
-    def projection_3D(self, box, cloud_msg, h_img, w_img):
+    def projection_3D_mask(self, binary_mask, cloud_msg, h_img, w_img):
+        """
+        Calcule la position moyenne des points 3D correspondant au masque binaire.
+        """
         if cloud_msg is None:
             return {"x": None, "y": None, "z": None}
 
@@ -186,84 +182,64 @@ class VideoInferenceNode(Node):
         w_pc = cloud_msg.width
 
         if h_pc != h_img or w_pc != w_img:
-            self.get_logger().warn(
-                f"Taille pointcloud ({h_pc},{w_pc}) != image ({h_img},{w_img}), pas de 3D."
-            )
+            # Si les résolutions diffèrent, on ne peut pas mapper directement pixel->point
             return {"x": None, "y": None, "z": None}
 
-        # centre de la bbox
-        x1, y1, x2, y2 = box
-        cx = int((x1 + x2) / 2)
-        cy = int((y1 + y2) / 2)
+        # Récupération des offsets
+        x_off = -1; y_off = -1; z_off = -1
+        for f in cloud_msg.fields:
+            if f.name == "x": x_off = f.offset
+            elif f.name == "y": y_off = f.offset
+            elif f.name == "z": z_off = f.offset
+        
+        if x_off == -1: return {"x": None, "y": None, "z": None}
 
-        cx = max(0, min(cx, w_pc - 1))
-        cy = max(0, min(cy, h_pc - 1))
+        ys, xs = np.where(binary_mask == 1)
 
-        # Un seul point dans le nuage
-        point_iter = pc2.read_points(
-            cloud_msg,
-            field_names=("x", "y", "z"),
-            skip_nans=False,
-            uvs=[(cx, cy)]
-        )
-
-        try:
-            x, y, z = next(point_iter)
-        except StopIteration:
+        if len(xs) == 0:
             return {"x": None, "y": None, "z": None}
 
-        if np.isnan(z) or z == 0.0:
+        step = 1
+        if len(xs) > 1000:
+            step = 10
+        
+        valid_points = []
+        
+        fmt = '>' if cloud_msg.is_bigendian else '<'
+        fmt += 'f'
+        point_step = cloud_msg.point_step
+        row_step = cloud_msg.row_step
+        data = cloud_msg.data
+
+        for i in range(0, len(xs), step):
+            u, v = xs[i], ys[i]
+            
+            # Calcul de l'offset mémoire
+            offset = v * row_step + u * point_step
+            
+            try:
+                z = struct.unpack_from(fmt, data, offset + z_off)[0]
+                
+                # Filtrage basique des points invalides
+                if not np.isnan(z) and z > 0.1 and z < 15.0:
+                    x = struct.unpack_from(fmt, data, offset + x_off)[0]
+                    y = struct.unpack_from(fmt, data, offset + y_off)[0]
+                    valid_points.append((x, y, z))
+            except:
+                continue
+
+        if not valid_points:
             return {"x": None, "y": None, "z": None}
 
-        return {"x": float(x), "y": float(y), "z": float(z)}
+        points_np = np.array(valid_points)
+        median_xyz = np.median(points_np, axis=0)
 
+        return {
+            "x": float(median_xyz[0]), 
+            "y": float(median_xyz[1]), 
+            "z": float(median_xyz[2])
+        }
 
-    def create_colored_pointcloud(self, cloud_msg, color_mask):
-        h_pc = cloud_msg.height
-        w_pc = cloud_msg.width
-
-        h_img, w_img, _ = color_mask.shape
-        if h_pc != h_img or w_pc != w_img:
-            self.get_logger().warn(
-                f"color_mask ({h_img},{w_img}) != pointcloud ({h_pc},{w_pc}), skip colored cloud."
-            )
-            return None
-
-        # Lire tous les points du cloud
-        points = list(pc2.read_points(
-            cloud_msg,
-            field_names=("x", "y", "z"),
-            skip_nans=False
-        ))
-
-        def pack_rgb(r, g, b):
-            rgb_uint32 = (r << 16) | (g << 8) | b
-            return struct.unpack('f', struct.pack('I', rgb_uint32))[0]
-
-        new_points = []
-        idx = 0
-        for y in range(h_pc):
-            for x in range(w_pc):
-                x3d, y3d, z3d = points[idx]
-                b, g, r = color_mask[y, x]
-                rgb_float = pack_rgb(int(r), int(g), int(b))
-                new_points.append((x3d, y3d, z3d, rgb_float))
-                idx += 1
-
-        fields = [
-            PointField("x", 0,  PointField.FLOAT32, 1),
-            PointField("y", 4,  PointField.FLOAT32, 1),
-            PointField("z", 8,  PointField.FLOAT32, 1),
-            PointField("rgb", 12, PointField.FLOAT32, 1),
-        ]
-
-        colored_cloud = pc2.create_cloud(
-            cloud_msg.header,
-            fields,
-            new_points
-        )
-
-        return colored_cloud
 
 def main(args=None):
     rclpy.init(args=args)

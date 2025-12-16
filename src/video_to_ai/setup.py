@@ -28,7 +28,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'video_inference_node = video_to_ai.video_inference_node:main'
+            'video_inference_node = video_to_ai.video_inference_node:main',
+            'fake_oak_publisher = video_to_ai.fake_oak_publisher:main',
         ],
     },
 )
