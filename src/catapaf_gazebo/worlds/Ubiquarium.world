@@ -513,9 +513,36 @@
       </link>
     </model>
 
-    <include>
-      <uri>model://trash_bin</uri>
-      <pose>-4 -2 0 0 0 0</pose>
-    </include>
+<model name='first_2015_trash_can'>
+      <link name='link'>
+        <inertial>
+          <pose frame=''>-4 -2 0 0 0 0</pose>
+          <mass>5</mass>
+          <inertia>
+            <ixx>0.281534</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>0.281534</iyy>
+            <iyz>0</iyz>
+            <izz>0.126223</izz>
+          </inertia>
+        </inertial>
+        <visual name='visual'>
+          <geometry>
+            <mesh>
+              <uri>model://first_2015_trash_can/meshes/trash_can.dae</uri>
+            </mesh>
+          </geometry>
+        </visual>
+        <collision name='collision'>
+          <geometry>
+            <mesh>
+              <uri>model://first_2015_trash_can/meshes/trash_can.dae</uri>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <pose frame=''>-4 -2 0 0 0 0</pose>
+    </model>
   </world>
 </sdf>
