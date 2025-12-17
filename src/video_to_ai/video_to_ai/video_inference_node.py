@@ -2,13 +2,14 @@ import os
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
-from sensor_msgs.msg import Image, PointCloud2
+from rclpy.qos import qos_profile_sensor_data, QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+from sensor_msgs.msg import Image, PointCloud2, PointField
 from std_msgs.msg import String
+import sensor_msgs_py.point_cloud2 as pc2
 from cv_bridge import CvBridge
 import numpy as np
 import cv2
 import json
-import struct
 import traceback
 from ultralytics import YOLO
 
@@ -18,72 +19,76 @@ class VideoInferenceNode(Node):
 
         self.bridge = CvBridge()
 
-        # Chargement du modèle
         model_path = os.path.join(get_package_share_directory("video_to_ai"), "models", "yolo_best.pt")
         self.get_logger().info(f"Chargement du modèle : {model_path}")
         self.model = YOLO(model_path)
-        # self.model.fuse() # Optionnel, accélère parfois l'inférence
-
+        
         self.latest_cloud = None
 
-        # Subscriber vidéo
         self.sub = self.create_subscription(
             Image,
-            "/oak/rgb/image_raw",
+            "/camera/image_raw",
             self.image_callback,
-            10
+            qos_profile_sensor_data
         )
 
-        # Publisher IA de l'image segmentée
         self.overlay_pub = self.create_publisher(
             Image,
             "/ia/segmented_image",
             10
         )
 
-        # Publisher IA du résultat JSON
         self.result_pub = self.create_publisher(
             String,
             "/ia/result",
             10
         )
+ 
+        # QoS pour PointCloud2 - doit matcher le publisher (RELIABLE)
+        pointcloud_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,  # Changé en RELIABLE
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,  # Même depth que le publisher
+            durability=DurabilityPolicy.VOLATILE
+        )
 
-        # Subscriber PointCloud2
         self.pc_sub = self.create_subscription(
             PointCloud2,
-            "/oak/points",
+            "/depth_camera/points",
             self.pointcloud_callback,
+            pointcloud_qos
+        )
+
+        self.object_cloud_pub = self.create_publisher(
+            PointCloud2,
+            "/ia/object_cloud",
             10
         )
 
         self.get_logger().info("video_inference_node started")
 
     def image_callback(self, msg: Image):
-        # Convertir en image OpenCV
         try:
             frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         except Exception as e:
             self.get_logger().error(f"Erreur conversion Image -> OpenCV: {e}")
             return
         
-        # Utilisation du dernier nuage reçu
         cloud_msg = self.latest_cloud
-        if cloud_msg is None:
-            self.get_logger().debug("Pas de nuage de points reçu pour l'instant.")
 
-        # Appel du modèle IA
         try:
             result_dict, overlay = self.run_inference(frame, cloud_msg)
 
-            # Publication de l'overlay 2D
             overlay_msg = self.bridge.cv2_to_imgmsg(overlay, encoding="bgr8")
             overlay_msg.header = msg.header
             self.overlay_pub.publish(overlay_msg)
 
-            # Publication du résultat JSON
             result_msg = String()
             result_msg.data = json.dumps(result_dict)
             self.result_pub.publish(result_msg)
+
+            if cloud_msg is None:
+                self.get_logger().warn("Pas de nuage de points (projection 3D désactivée)", throttle_duration_sec=5.0)
 
         except Exception as e:
             self.get_logger().error(f"Erreur pendant l'inférence IA: {e}")
@@ -92,11 +97,10 @@ class VideoInferenceNode(Node):
 
 
     def pointcloud_callback(self, msg: PointCloud2):
-        # On stocke le dernier nuage de points reçu
         self.latest_cloud = msg
+        self.get_logger().info(f"Nuage reçu: {msg.width}x{msg.height} points", throttle_duration_sec=5.0)
 
     def run_inference(self, frame, cloud_msg):
-        # verbose=False pour alléger la console
         results = self.model(frame, verbose=False)[0]
 
         h, w = frame.shape[:2]
@@ -109,15 +113,12 @@ class VideoInferenceNode(Node):
             boxes = results.boxes     
 
             for m, box in zip(masks, boxes):
-                # Classe et score
                 cls_id = int(box.cls.item())
                 score = float(box.conf.item())
                 label = self.model.names[cls_id]
 
-                # Masque
                 m_np = m.cpu().numpy()
 
-                # Resize du masque à la taille du frame si besoin
                 m_resized = cv2.resize(
                     m_np,
                     (w, h),
@@ -127,27 +128,30 @@ class VideoInferenceNode(Node):
                 mask_bin = (m_resized > 0.5).astype(np.uint8)
 
                 if label == "person":
-                    color = (0, 0, 255)      # rouge 
+                    color = (0, 0, 255)
                 elif label == "ball":
-                    color = (255, 0, 0)      # bleu
+                    color = (255, 0, 0)
                 else:
-                    color = (0, 255, 0)      # vert
+                    color = (0, 255, 0)
 
                 indices = np.where(mask_bin == 1)
-                # Sécurité pour l'assignation numpy
                 if len(indices[0]) > 0:
                     color_mask[indices[0], indices[1]] = color
                 
-                # Bbox
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
 
-                # Projection 3D en utilisant le masque de segmentation
-                pos_3d = self.projection_3D_mask(
+                pos_3d, object_points = self.projection_3D_mask(
                     mask_bin,
                     cloud_msg,
                     h,
                     w
                 )
+
+                if object_points is not None and len(object_points) > 0:
+                    self.publish_object_cloud(object_points, cloud_msg.header)
+                else:
+                    if cloud_msg is not None:
+                        self.get_logger().warn(f"Projection échouée pour {label} (pas de points valides)", throttle_duration_sec=2.0)
 
                 detections.append({
                     "label": label,
@@ -170,77 +174,90 @@ class VideoInferenceNode(Node):
 
         return result_dict, overlay
     
+    def publish_object_cloud(self, points, header):
+        cloud_msg = pc2.create_cloud_xyz32(header, points)
+        self.object_cloud_pub.publish(cloud_msg)
 
     def projection_3D_mask(self, binary_mask, cloud_msg, h_img, w_img):
-        """
-        Calcule la position moyenne des points 3D correspondant au masque binaire.
-        """
+        """Projection COMPLÈTE : tous les points du masque sans filtrage"""
         if cloud_msg is None:
-            return {"x": None, "y": None, "z": None}
-
-        h_pc = cloud_msg.height
-        w_pc = cloud_msg.width
-
-        if h_pc != h_img or w_pc != w_img:
-            # Si les résolutions diffèrent, on ne peut pas mapper directement pixel->point
-            return {"x": None, "y": None, "z": None}
-
-        # Récupération des offsets
-        x_off = -1; y_off = -1; z_off = -1
-        for f in cloud_msg.fields:
-            if f.name == "x": x_off = f.offset
-            elif f.name == "y": y_off = f.offset
-            elif f.name == "z": z_off = f.offset
-        
-        if x_off == -1: return {"x": None, "y": None, "z": None}
+            return {"x": None, "y": None, "z": None}, None
 
         ys, xs = np.where(binary_mask == 1)
-
+        
         if len(xs) == 0:
-            return {"x": None, "y": None, "z": None}
-
-        step = 1
-        if len(xs) > 1000:
-            step = 10
+            return {"x": None, "y": None, "z": None}, None
         
-        valid_points = []
+        points_3d = []
         
-        fmt = '>' if cloud_msg.is_bigendian else '<'
-        fmt += 'f'
-        point_step = cloud_msg.point_step
-        row_step = cloud_msg.row_step
-        data = cloud_msg.data
-
-        for i in range(0, len(xs), step):
-            u, v = xs[i], ys[i]
+        try:
+            # Vérification dimensions
+            if cloud_msg.height > 1:
+                if cloud_msg.height != h_img or cloud_msg.width != w_img:
+                    self.get_logger().warn(
+                        f"Mismatch: Image {w_img}x{h_img} vs Cloud {cloud_msg.width}x{cloud_msg.height}", 
+                        throttle_duration_sec=2.0
+                    )
+                    return {"x": None, "y": None, "z": None}, None
             
-            # Calcul de l'offset mémoire
-            offset = v * row_step + u * point_step
+            # Lire TOUT le nuage
+            all_points = list(pc2.read_points(
+                cloud_msg, 
+                field_names=("x", "y", "z"), 
+                skip_nans=False
+            ))
             
-            try:
-                z = struct.unpack_from(fmt, data, offset + z_off)[0]
+            # ✅ Parcourir TOUS les pixels du masque (pas de step)
+            for u, v in zip(xs, ys):
+                idx = int(v) * cloud_msg.width + int(u)
                 
-                # Filtrage basique des points invalides
-                if not np.isnan(z) and z > 0.1 and z < 15.0:
-                    x = struct.unpack_from(fmt, data, offset + x_off)[0]
-                    y = struct.unpack_from(fmt, data, offset + y_off)[0]
-                    valid_points.append((x, y, z))
-            except:
-                continue
-
-        if not valid_points:
-            return {"x": None, "y": None, "z": None}
-
-        points_np = np.array(valid_points)
-        median_xyz = np.median(points_np, axis=0)
-
+                if idx >= len(all_points):
+                    continue
+                
+                point = all_points[idx]
+                
+                # Unpacking
+                try:
+                    x, y, z = point
+                    x, y, z = float(x), float(y), float(z)
+                except (ValueError, TypeError):
+                    try:
+                        coords = list(point)
+                        x, y, z = float(coords[0]), float(coords[1]), float(coords[2])
+                    except (IndexError, TypeError, ValueError):
+                        continue
+                
+                # ✅ Garder seulement les points valides (pas NaN)
+                if np.isnan(x) or np.isnan(y) or np.isnan(z):
+                    continue
+                
+                # ✅ Pas de filtrage de distance, on garde tout
+                points_3d.append([x, y, z])
+        
+        except Exception as e:
+            self.get_logger().error(f"Erreur lecture PointCloud2: {e}")
+            traceback.print_exc()
+            return {"x": None, "y": None, "z": None}, None
+        
+        if len(points_3d) == 0:
+            return {"x": None, "y": None, "z": None}, None
+        
+        # Position médiane pour le JSON
+        points_np = np.array(points_3d)
+        median = np.median(points_np, axis=0)
+        
+        self.get_logger().info(
+            f"Projection: {len(points_3d)} points extraits du masque",
+            throttle_duration_sec=2.0
+        )
+        
         return {
-            "x": float(median_xyz[0]), 
-            "y": float(median_xyz[1]), 
-            "z": float(median_xyz[2])
-        }
+            "x": float(median[0]),
+            "y": float(median[1]),
+            "z": float(median[2])
+        }, points_3d
 
-
+    
 def main(args=None):
     rclpy.init(args=args)
     node = VideoInferenceNode()
