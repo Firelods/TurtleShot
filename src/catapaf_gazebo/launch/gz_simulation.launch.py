@@ -7,7 +7,7 @@ from launch.actions import AppendEnvironmentVariable, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
-
+import xacro
 
 def generate_launch_description():
 
@@ -25,10 +25,11 @@ def generate_launch_description():
 
     # --- FILES ---
     world_file = os.path.join(pkg_catapaf_gazebo, 'worlds', 'turtlebot3_world.world')
-    model_sdf = os.path.join(pkg_catapaf_gazebo, 'models', 'turtlebot_catapaf', 'model.sdf')
-    urdf_file = os.path.join(pkg_catapaf_gazebo, 'urdf', 'turtlebot_catapaf.urdf')
+    # model_sdf = os.path.join(pkg_catapaf_gazebo, 'models', 'turtlebot_catapaf', 'model.sdf')
+    urdf_file = os.path.join(pkg_catapaf_gazebo, 'urdf', 'turtlebot_catapaf_simple.urdf')
     bridge_config = os.path.join(pkg_catapaf_gazebo, 'config', 'catapaf_bridge.yaml')
-
+    with open(urdf_file, 'r') as infp:
+            robot_description_content = infp.read()
     # --- SIM OPTIONS ---
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
     x_pose = LaunchConfiguration('x_pose', default='0.5')
@@ -38,8 +39,9 @@ def generate_launch_description():
     # --- GAZEBO RESOURCES ---
     set_env_vars_resources = AppendEnvironmentVariable(
         'GZ_SIM_RESOURCE_PATH',
-        os.path.join(pkg_catapaf_gazebo, 'models')
+        os.path.dirname(pkg_catapaf_gazebo)
     )
+
 
     # --- GZ SERVER ---
     gzserver_cmd = IncludeLaunchDescription(
@@ -67,22 +69,30 @@ def generate_launch_description():
         executable='robot_state_publisher',
         name='robot_state_publisher',
         output='screen',
-        parameters=[{'use_sim_time': use_sim_time},{'publish_frequency': 30.0}],
+        parameters=[{'use_sim_time': use_sim_time},{'publish_frequency': 30.0},{'robot_description': robot_description_content}],
         arguments=[urdf_file]
     )
 
+    robot_description_config = xacro.process_file(urdf_file).toxml()
+
     # --- SPAWN ROBOT ---
     spawn_robot = Node(
-        package='ros_gz_sim',
-        executable='create',
+        package="ros_gz_sim",
+        executable="create",
         arguments=[
-            '-name', 'turtlebot_catapaf',
-            '-file', model_sdf,
-            '-x', x_pose,
-            '-y', y_pose,
-            '-z', z_pose
+            "-name", "turtlebot_catapaf",
+            "-topic", "robot_description",
+
+            # "-string",
+            # robot_description_config,
+            "-x",
+            x_pose,
+            "-y",
+            y_pose,
+            "-z",
+            z_pose,
         ],
-        output='screen'
+        output="screen",    
     )
 
     bridge_params = os.path.join(
@@ -130,6 +140,25 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time}]
     )
 
+    # --- BALL SPAWNER ---
+    ball_spawner = Node(
+        package='catapaf_gazebo',
+        executable='ball_spawner',
+        name='ball_spawner',
+        output='screen',
+        parameters=[
+            {'use_sim_time': use_sim_time},
+            {'auto_respawn': True},
+            {'spawn_delay': 3.0},  # Wait for simulation to be ready
+            # Position above catapaf_arm: arm is at (-0.03, -0.098, 0.11)
+            # Arm collision box: 0.12 x 0.05 x 0.03, centered at arm pose + (0.05, 0, 0)
+            # Ball radius: 0.03m, so place at arm_z + arm_height/2 + ball_radius + small_gap
+            {'ball_x': 0.45},      # Slightly forward from arm center
+            {'ball_y': -0.098},    # Same Y as arm
+            {'ball_z': 0.145}      # 0.11 (arm base) + 0.015 (half box height) + 0.03 (ball radius) - 0.01 (nestled in)
+        ]
+    )
+
     # --- FINAL LAUNCH DESCRIPTION ---
     return LaunchDescription([
         set_env_vars_resources,
@@ -140,5 +169,6 @@ def generate_launch_description():
         ros_gz_bridge,
         catapaf_arm_controller,
         odom_to_tf,
-        # rviz_cmd
+        # ball_spawner,
+        rviz_cmd
     ])

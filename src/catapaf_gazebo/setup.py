@@ -44,6 +44,10 @@ setup(
             glob('models/turtlebot3_world/*.config')
         ),
         (
+            os.path.join('share', package_name, 'rviz'),
+            glob('rviz/*.rviz')
+        ),
+        (
             os.path.join('share', package_name, 'models', 'turtlebot3_world'),
             glob('models/turtlebot3_world/*.sdf')
         ),
@@ -63,6 +67,8 @@ setup(
         'console_scripts': [
             'catapaf_arm_controller = catapaf_gazebo.catapaf_arm_controller:main',
             'odom_to_tf = catapaf_gazebo.odom_to_tf:main',
+            'ball_spawner = catapaf_gazebo.ball_spawner:main',
+            'camera_tf_tuner = catapaf_gazebo.camera_tf_tuner:main',
         ],
     },
 )
