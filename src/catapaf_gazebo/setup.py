@@ -15,9 +15,15 @@ setup(
         ('share/' + package_name, ['package.xml']),
 
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
-        (os.path.join('share', package_name, 'config'), glob('config/*')),
+        (os.path.join('share', package_name, 'config'), [f for f in glob('config/*') if os.path.isfile(f)]),
+        (os.path.join('share', package_name, 'config', 'nav2'), glob('config/nav2/*')),
         (os.path.join('share', package_name, 'urdf'), glob('urdf/*')),
-        (os.path.join('share', package_name, 'worlds'), glob('worlds/*')),
+        (os.path.join('share', package_name, 'worlds'), [f for f in glob('worlds/*') if os.path.isfile(f)]),
+        (os.path.join('share', package_name, 'models', 'first_2015_trash_can'), 
+        glob('models/first_2015_trash_can/model.*')),
+        
+        (os.path.join('share', package_name, 'models', 'first_2015_trash_can', 'meshes'), 
+        glob('models/first_2015_trash_can/meshes/*')),
 
         (os.path.join('share', package_name, 'models', 'ball'),
             glob('models/ball/*')),
@@ -71,6 +77,7 @@ setup(
         'console_scripts': [
             'catapaf_arm_controller = catapaf_gazebo.catapaf_arm_controller:main',
             'odom_to_tf = catapaf_gazebo.odom_to_tf:main',
+            'autonomous_explorer = catapaf_gazebo.autonomous_explorer:main',
         ],
     },
 )
