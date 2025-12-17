@@ -12,6 +12,7 @@ import cv2
 import json
 import traceback
 from ultralytics import YOLO
+import struct
 
 class VideoInferenceNode(Node):
     def __init__(self):
@@ -44,11 +45,10 @@ class VideoInferenceNode(Node):
             10
         )
  
-        # QoS pour PointCloud2 - doit matcher le publisher (RELIABLE)
         pointcloud_qos = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,  # Changé en RELIABLE
+            reliability=ReliabilityPolicy.RELIABLE,
             history=HistoryPolicy.KEEP_LAST,
-            depth=10,  # Même depth que le publisher
+            depth=10,
             durability=DurabilityPolicy.VOLATILE
         )
 
@@ -105,8 +105,10 @@ class VideoInferenceNode(Node):
 
         h, w = frame.shape[:2]
         detections = []
-
         color_mask = np.zeros_like(frame)
+        
+        # Masque de segmentation : 0=fond, 1=person, 2=ball, 3=trash_can
+        segmentation_mask = np.zeros((h, w), dtype=np.uint8)
 
         if results.masks is not None:
             masks = results.masks.data 
@@ -118,40 +120,32 @@ class VideoInferenceNode(Node):
                 label = self.model.names[cls_id]
 
                 m_np = m.cpu().numpy()
-
-                m_resized = cv2.resize(
-                    m_np,
-                    (w, h),
-                    interpolation=cv2.INTER_NEAREST
-                )
-
+                m_resized = cv2.resize(m_np, (w, h), interpolation=cv2.INTER_NEAREST)
                 mask_bin = (m_resized > 0.5).astype(np.uint8)
 
+                # Définir les couleurs selon l'objet
                 if label == "person":
-                    color = (0, 0, 255)
+                    color = (0, 255, 255) 
+                    seg_id = 1  #
                 elif label == "ball":
-                    color = (255, 0, 0)
+                    color = (0, 0, 255)  
+                    seg_id = 2  
+                elif label == "trash_can" or label == "poubelle":
+                    color = (0, 255, 0)  
+                    seg_id = 3  
                 else:
-                    color = (0, 255, 0)
+                    color = (255, 0, 255)  
+                    seg_id = 4
 
                 indices = np.where(mask_bin == 1)
                 if len(indices[0]) > 0:
                     color_mask[indices[0], indices[1]] = color
+                    segmentation_mask[indices[0], indices[1]] = seg_id
                 
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
 
-                pos_3d, object_points = self.projection_3D_mask(
-                    mask_bin,
-                    cloud_msg,
-                    h,
-                    w
-                )
-
-                if object_points is not None and len(object_points) > 0:
-                    self.publish_object_cloud(object_points, cloud_msg.header)
-                else:
-                    if cloud_msg is not None:
-                        self.get_logger().warn(f"Projection échouée pour {label} (pas de points valides)", throttle_duration_sec=2.0)
+                # Calculer la position 3D médiane
+                pos_3d = self.compute_median_position(mask_bin, cloud_msg, h, w)
 
                 detections.append({
                     "label": label,
@@ -165,97 +159,118 @@ class VideoInferenceNode(Node):
                     "position_3d": pos_3d
                 })
 
+        if cloud_msg is not None:
+            self.publish_colored_cloud(cloud_msg, segmentation_mask, h, w)
         
         overlay = cv2.addWeighted(frame, 0.6, color_mask, 0.4, 0)
 
-        result_dict = {
-            "detections": detections,
-        }
+        result_dict = {"detections": detections}
 
         return result_dict, overlay
     
-    def publish_object_cloud(self, points, header):
-        cloud_msg = pc2.create_cloud_xyz32(header, points)
-        self.object_cloud_pub.publish(cloud_msg)
-
-    def projection_3D_mask(self, binary_mask, cloud_msg, h_img, w_img):
-        """Projection COMPLÈTE : tous les points du masque sans filtrage"""
+    def compute_median_position(self, binary_mask, cloud_msg, h_img, w_img):
+        """Calcule la position médiane d'un objet segmenté"""
         if cloud_msg is None:
-            return {"x": None, "y": None, "z": None}, None
+            return {"x": None, "y": None, "z": None}
 
         ys, xs = np.where(binary_mask == 1)
-        
         if len(xs) == 0:
-            return {"x": None, "y": None, "z": None}, None
-        
-        points_3d = []
+            return {"x": None, "y": None, "z": None}
         
         try:
-            # Vérification dimensions
-            if cloud_msg.height > 1:
-                if cloud_msg.height != h_img or cloud_msg.width != w_img:
-                    self.get_logger().warn(
-                        f"Mismatch: Image {w_img}x{h_img} vs Cloud {cloud_msg.width}x{cloud_msg.height}", 
-                        throttle_duration_sec=2.0
-                    )
-                    return {"x": None, "y": None, "z": None}, None
+            all_points = list(pc2.read_points(cloud_msg, field_names=("x", "y", "z"), skip_nans=False))
             
-            # Lire TOUT le nuage
-            all_points = list(pc2.read_points(
-                cloud_msg, 
-                field_names=("x", "y", "z"), 
-                skip_nans=False
-            ))
+            points_3d = []
+            step = max(1, len(xs) // 500)
             
-            # ✅ Parcourir TOUS les pixels du masque (pas de step)
-            for u, v in zip(xs, ys):
-                idx = int(v) * cloud_msg.width + int(u)
-                
+            for i in range(0, len(xs), step):
+                idx = int(ys[i]) * w_img + int(xs[i])
                 if idx >= len(all_points):
                     continue
                 
                 point = all_points[idx]
-                
-                # Unpacking
                 try:
                     x, y, z = point
                     x, y, z = float(x), float(y), float(z)
-                except (ValueError, TypeError):
-                    try:
-                        coords = list(point)
-                        x, y, z = float(coords[0]), float(coords[1]), float(coords[2])
-                    except (IndexError, TypeError, ValueError):
-                        continue
-                
-                # ✅ Garder seulement les points valides (pas NaN)
-                if np.isnan(x) or np.isnan(y) or np.isnan(z):
+                    if not (np.isnan(x) or np.isnan(y) or np.isnan(z)):
+                        points_3d.append([x, y, z])
+                except:
                     continue
-                
-                # ✅ Pas de filtrage de distance, on garde tout
-                points_3d.append([x, y, z])
+            
+            if len(points_3d) > 0:
+                median = np.median(np.array(points_3d), axis=0)
+                return {"x": float(median[0]), "y": float(median[1]), "z": float(median[2])}
+        except:
+            pass
+        
+        return {"x": None, "y": None, "z": None}
+
+    def publish_colored_cloud(self, cloud_msg, segmentation_mask, h_img, w_img):
+        """Publie TOUT le nuage de points avec couleurs RGB selon segmentation"""
+        try:
+            all_points = list(pc2.read_points(cloud_msg, field_names=("x", "y", "z"), skip_nans=False))
+            
+            colored_points = []
+            
+            # Parcourir TOUS les pixels
+            for v in range(h_img):
+                for u in range(w_img):
+                    idx = v * w_img + u
+                    
+                    if idx >= len(all_points):
+                        continue
+                    
+                    point = all_points[idx]
+                    
+                    try:
+                        x, y, z = point
+                        x, y, z = float(x), float(y), float(z)
+                    except:
+                        continue
+                    
+                    if np.isnan(x) or np.isnan(y) or np.isnan(z):
+                        continue
+                    
+                    # Couleur selon segmentation
+                    seg_value = segmentation_mask[v, u]
+                    
+                    if seg_value == 1:  # Person
+                        r, g, b = 255, 255, 0 
+                    elif seg_value == 2:  # Ball
+                        r, g, b = 255, 0, 0  
+                    elif seg_value == 3: # Trash can
+                        r, g, b = 0, 255, 0
+                    elif seg_value == 4: 
+                        r, g, b = 255, 0, 255  
+                    else:
+                        r, g, b = 180, 180, 180  # 
+                    
+                    rgb_bytes = struct.pack('BBBB', b, g, r, 255)  # BGRA little-endian
+                    rgb_float = struct.unpack('f', rgb_bytes)[0]
+                    
+                    colored_points.append([x, y, z, rgb_float])
+        
+            fields = [
+                PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
+                PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
+                PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
+                PointField(name='rgb', offset=12, datatype=PointField.FLOAT32, count=1),
+            ]
+            
+            cloud_colored = pc2.create_cloud(cloud_msg.header, fields, colored_points)
+            self.object_cloud_pub.publish(cloud_colored)
+            
+            self.get_logger().info(
+                f"Nuage colorisé: {len(colored_points)} points "
+                f"(person={np.sum(segmentation_mask==1)}, ball={np.sum(segmentation_mask==2)}, "
+                f"trash={np.sum(segmentation_mask==3)}, fond={np.sum(segmentation_mask==0)})",
+                throttle_duration_sec=5.0
+            )
         
         except Exception as e:
-            self.get_logger().error(f"Erreur lecture PointCloud2: {e}")
+            self.get_logger().error(f"Erreur création nuage colorisé: {e}")
             traceback.print_exc()
-            return {"x": None, "y": None, "z": None}, None
-        
-        if len(points_3d) == 0:
-            return {"x": None, "y": None, "z": None}, None
-        
-        # Position médiane pour le JSON
-        points_np = np.array(points_3d)
-        median = np.median(points_np, axis=0)
-        
-        self.get_logger().info(
-            f"Projection: {len(points_3d)} points extraits du masque",
-            throttle_duration_sec=2.0
-        )
-        
-        return {
-            "x": float(median[0]),
-            "y": float(median[1]),
-            "z": float(median[2])
-        }, points_3d
+
 
     
 def main(args=None):
