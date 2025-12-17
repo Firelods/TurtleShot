@@ -479,13 +479,15 @@
           <izz>0.00003918</izz>
         </inertia>
       </inertial>
-
       <collision name="catapaf_arm_collision">
-        <pose>0.05 0 0 0 0 0</pose>
+        <origin xyz="0.0 0 0" />
         <geometry>
-          <box>
-            <size>0.12 0.05 0.03</size>
-          </box>
+          <!-- <mesh
+            filename="package://catapaf_gazebo/models/catapaf_common/meshes/catapaf/collider_godet.stl" /> -->
+          <mesh>
+            <uri>model://catapaf_common/meshes/catapaf/collider_godet.stl</uri>
+            <scale>1 1 1</scale>
+          </mesh>
         </geometry>
       </collision>
 
@@ -493,7 +495,7 @@
         <pose>0 0 0 0 0 0</pose>
         <geometry>
           <mesh>
-            <uri>model://catapaf_common/meshes/catapaf/catapaf.stl</uri>
+            <uri>model://catapaf_common/meshes/catapaf/godetrvcm.stl</uri>
             <scale>1 1 1</scale>
           </mesh>
         </geometry>
@@ -629,13 +631,13 @@
       name="gz::sim::systems::JointPositionController">
       <joint_name>catapaf_joint</joint_name>
       <topic>catapaf_arm/position</topic>
-      <p_gain>10.0</p_gain>
-      <i_gain>0.5</i_gain>
-      <d_gain>0.5</d_gain>
+      <p_gain>15.0</p_gain>
+      <i_gain>0.1</i_gain>
+      <d_gain>8.0</d_gain>
       <i_max>1.0</i_max>
       <i_min>-1.0</i_min>
-      <cmd_max>10.0</cmd_max>
-      <cmd_min>-10.0</cmd_min>
+      <cmd_max>50.0</cmd_max>
+      <cmd_min>-50.0</cmd_min>
     </plugin>
 
     <plugin name="camera_info" filename="gz-sim-ros2-camera-system">

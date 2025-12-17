@@ -4,18 +4,18 @@
         <pose>0 0 0.15 0 0 0</pose>
         <link name="ball_link">
             <inertial>
-                <mass>0.05</mass>
+                <mass>0.00015</mass>
                 <inertia>
-                    <ixx>0.00002</ixx>
-                    <iyy>0.00002</iyy>
-                    <izz>0.00002</izz>
+                    <ixx>0.000007</ixx>
+                    <iyy>0.000007</iyy>
+                    <izz>0.000007</izz>
                 </inertia>
             </inertial>
 
             <collision name="collision">
                 <geometry>
                     <sphere>
-                        <radius>0.05</radius>
+                        <radius>0.015</radius>
                     </sphere>
                 </geometry>
                 <surface>
@@ -45,7 +45,7 @@
             <visual name="visual">
                 <geometry>
                     <sphere>
-                        <radius>0.05</radius>
+                        <radius>0.015</radius>
                     </sphere>
                 </geometry>
                 <material>

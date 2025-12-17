@@ -286,7 +286,7 @@
     <model name="turtlebot3_world">
       <static>1</static>
       <include>
-        <uri>model://turtlebot3_world</uri>
+        <uri>model://catapaf_gazebo/models/turtlebot3_world</uri>
       </include>
     </model>
 

@@ -248,7 +248,7 @@
       </geometry>
     </visual>
     <collision>
-      <origin xyz="-0.02 0.02 0" />
+      <origin xyz="-0.008 0.02 0" />
       <geometry>
         <box size="0.08 0.05 0.03" />
       </geometry>
@@ -270,13 +270,13 @@
   <link name="catapaf_arm">
     <visual>
       <geometry>
-        <mesh filename="package://catapaf_gazebo/models/catapaf_common/meshes/catapaf/catapaf.stl" />
+        <mesh filename="package://catapaf_gazebo/models/catapaf_common/meshes/catapaf/godetrvcm.stl" />
       </geometry>
     </visual>
     <collision>
-      <origin xyz="0.05 0 0" />
+      <origin xyz="0.0 0 0" />
       <geometry>
-        <box size="0.12 0.05 0.03" />
+        <mesh filename="package://catapaf_gazebo/models/catapaf_common/meshes/catapaf/collider_godet.stl" />
       </geometry>
     </collision>
     <inertial>
