@@ -55,6 +55,14 @@ setup(
             os.path.join('share', package_name, 'models', 'turtlebot3_world', 'meshes'),
             glob('models/turtlebot3_world/meshes/*')
         ),
+        (
+            os.path.join('share', package_name, 'models', 'trash_bin'),
+            glob('models/trash_bin/model.*')
+        ),
+        (
+            os.path.join('share', package_name, 'models', 'trash_bin', 'meshes'),
+            glob('models/trash_bin/meshes/*')
+        ),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

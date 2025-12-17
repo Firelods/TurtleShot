@@ -24,8 +24,7 @@ def generate_launch_description():
     
 
     # --- FILES ---
-    world_file = os.path.join(pkg_catapaf_gazebo, 'worlds', 'turtlebot3_world.world')
-    # model_sdf = os.path.join(pkg_catapaf_gazebo, 'models', 'turtlebot_catapaf', 'model.sdf')
+    world_file = os.path.join(pkg_catapaf_gazebo, 'worlds', 'Ubiquarium.world')
     urdf_file = os.path.join(pkg_catapaf_gazebo, 'urdf', 'turtlebot_catapaf_simple.urdf')
     bridge_config = os.path.join(pkg_catapaf_gazebo, 'config', 'catapaf_bridge.yaml')
     with open(urdf_file, 'r') as infp:
