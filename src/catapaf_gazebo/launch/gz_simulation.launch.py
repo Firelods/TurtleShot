@@ -139,6 +139,17 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time}]
     )
 
+    foxglove_cmd = Node(
+        package='foxglove_bridge',
+        executable='foxglove_bridge',
+        name='foxglove_bridge',
+        output='screen',
+        parameters=[{
+            "port": 8765, # WebSocket port (default: 8765)
+            "address": "0.0.0.0" # Allow external connections
+        }]
+    )
+
     # --- BALL SPAWNER ---
     ball_spawner = Node(
         package='catapaf_gazebo',
@@ -168,6 +179,7 @@ def generate_launch_description():
         ros_gz_bridge,
         catapaf_arm_controller,
         odom_to_tf,
-        # ball_spawner,
-        rviz_cmd
+        foxglove_cmd,
+        #ball_spawner,
+        rviz_cmd,
     ])
