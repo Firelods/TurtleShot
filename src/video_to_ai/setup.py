@@ -1,3 +1,5 @@
+from glob import glob
+import os
 from setuptools import find_packages, setup
 
 package_name = 'video_to_ai'
@@ -10,6 +12,8 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'models'),
+            glob('models/*.pt')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -24,7 +28,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'video_inference_node = video_to_ai.video_inference_node:main'
+            'video_inference_node = video_to_ai.video_inference_node:main',
+            'fake_oak_publisher = video_to_ai.fake_oak_publisher:main',
         ],
     },
 )
