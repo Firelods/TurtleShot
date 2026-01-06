@@ -107,7 +107,7 @@ class VideoInferenceNode(Node):
         detections = []
         color_mask = np.zeros_like(frame)
         
-        # Masque de segmentation : 0=fond, 1=person, 2=ball, 3=trash_can
+        # Masque de segmentation
         segmentation_mask = np.zeros((h, w), dtype=np.uint8)
 
         if results.masks is not None:
@@ -123,18 +123,18 @@ class VideoInferenceNode(Node):
                 m_resized = cv2.resize(m_np, (w, h), interpolation=cv2.INTER_NEAREST)
                 mask_bin = (m_resized > 0.5).astype(np.uint8)
 
-                # Définir les couleurs selon l'objet
-                if label == "person":
-                    color = (0, 255, 255) 
-                    seg_id = 1  #
-                elif label == "ball":
-                    color = (0, 0, 255)  
-                    seg_id = 2  
-                elif label == "trash_can" or label == "poubelle":
-                    color = (0, 255, 0)  
-                    seg_id = 3  
+                # Définir les couleurs selon l'index de classe
+                if cls_id == 1:  # Human
+                    color = (0, 255, 255)  # Jaune en BGR
+                    seg_id = 1
+                elif cls_id == 0:  # Red Ball
+                    color = (0, 0, 255)  # Rouge en BGR
+                    seg_id = 2
+                elif cls_id == 2:  # Trashcan
+                    color = (0, 255, 0)  # Vert en BGR
+                    seg_id = 3
                 else:
-                    color = (255, 0, 255)  
+                    color = (255, 0, 255)  # Magenta en BGR
                     seg_id = 4
 
                 indices = np.where(mask_bin == 1)
@@ -243,7 +243,7 @@ class VideoInferenceNode(Node):
                     elif seg_value == 4: 
                         r, g, b = 255, 0, 255  
                     else:
-                        r, g, b = 180, 180, 180  # 
+                        r, g, b = 180, 180, 180  # en gris
                     
                     rgb_bytes = struct.pack('BBBB', b, g, r, 255)  # BGRA little-endian
                     rgb_float = struct.unpack('f', rgb_bytes)[0]
@@ -262,8 +262,8 @@ class VideoInferenceNode(Node):
             
             self.get_logger().info(
                 f"Nuage colorisé: {len(colored_points)} points "
-                f"(person={np.sum(segmentation_mask==1)}, ball={np.sum(segmentation_mask==2)}, "
-                f"trash={np.sum(segmentation_mask==3)}, fond={np.sum(segmentation_mask==0)})",
+                f"(Human={np.sum(segmentation_mask==1)}, Red Ball={np.sum(segmentation_mask==2)}, "
+                f"Trashcan={np.sum(segmentation_mask==3)}, Fond={np.sum(segmentation_mask==0)})",
                 throttle_duration_sec=5.0
             )
         
