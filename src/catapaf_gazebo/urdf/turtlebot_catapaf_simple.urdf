@@ -73,8 +73,7 @@
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <mass value="8.2573504e-01" />
-      <inertia ixx="2.2124416e-03" ixy="-1.2294101e-05" ixz="3.4938785e-05" iyy="2.1193702e-03"
-        iyz="-5.0120904e-06" izz="2.0064271e-03" />
+      <inertia ixx="2.2124416e-03" ixy="0.0" ixz="0.0" iyy="2.1193702e-03" iyz="0.0" izz="2.0064271e-03"/>
     </inertial>
   </link>
 
@@ -115,8 +114,7 @@
     <inertial>
       <origin xyz="0 0 0" />
       <mass value="2.8498940e-02" />
-      <inertia ixx="1.1175580e-05" ixy="-4.2369783e-11" ixz="-5.9381719e-09" iyy="1.1192413e-05"
-        iyz="-1.4400107e-11" izz="2.0712558e-05" />
+      <inertia ixx="1.1175580e-05" ixy="0.0" ixz="0.0" iyy="1.1192413e-05" iyz="0.0" izz="2.0712558e-05"/>
     </inertial>
   </link>
 
@@ -156,8 +154,7 @@
     <inertial>
       <origin xyz="0 0 0" />
       <mass value="2.8498940e-02" />
-      <inertia ixx="1.1175580e-05" ixy="-4.2369783e-11" ixz="-5.9381719e-09" iyy="1.1192413e-05"
-        iyz="-1.4400107e-11" izz="2.0712558e-05" />
+      <inertia ixx="1.1175580e-05" ixy="0.0" ixz="0.0" iyy="1.1192413e-05" iyz="0.0" izz="2.0712558e-05"/>
     </inertial>
   </link>
 
@@ -179,7 +176,7 @@
     <inertial>
       <origin xyz="0 0 0" />
       <mass value="0.005" />
-      <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001" />
+      <inertia ixx="1.0e-07" ixy="0.0" ixz="0.0" iyy="1.0e-07" iyz="0.0" izz="1.0e-07"/>
     </inertial>
   </link>
   <joint name="support_cameras_a_joint" type="fixed">
@@ -263,7 +260,7 @@
     <inertial>
       <mass value="0.114" />
       <origin xyz="0 0 0" />
-      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001" />
+      <inertia ixx="47.43e-06" ixy="0.0" ixz="0.0" iyy="79.51e-06" iyz="0.0" izz="102.75e-06"/>
     </inertial>
   </link>
 
@@ -367,7 +364,7 @@
     <inertial>
       <origin xyz="0 0 0" />
       <mass value="0.15" />
-      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0002" iyz="0" izz="0.0002" />
+      <inertia ixx="0.00002827111577" ixy="0.0" ixz="0.0" iyy="0.00002166454804" iyz="0.0" izz="0.00004287492870"/>
     </inertial>
   </link>
 
@@ -410,8 +407,8 @@
     <child link="catapaf_arm" />
     <origin xyz="0 -0.008 0" rpy="3.14159265359 3.14159265359 0" />
     <axis xyz="0 1 0" />
-    <limit effort="20.0" lower="-1.5" upper="0" velocity="200.0" />
-    <dynamics damping="0.1" friction="0.05" />
+    <limit effort="1.0" lower="-1.5" upper="0.2" velocity="5.0" />
+    <dynamics damping="1" friction="0.5" />
   </joint>
 
 
@@ -576,29 +573,17 @@
   </gazebo>
 
   <gazebo>
-    <plugin filename="gz-sim-joint-controller-system"
-      name="gz::sim::systems::JointController">
+    <plugin filename="gz-sim-joint-position-controller-system"
+      name="gz::sim::systems::JointPositionController">
       <joint_name>catapaf_joint</joint_name>
-
-      <!-- Force mode (PID qui applique des forces pour suivre une vitesse cible) -->
-      <use_force_commands>true</use_force_commands>
-
-      <!-- PID à tuner -->
-      <p_gain>5</p_gain>
-      <i_gain>0.1</i_gain>
-      <d_gain>0.5</d_gain>
-
-
-      <!-- Topic custom (sinon ce sera le topic par défaut /model/.../cmd_vel) -->
-      <topic>catapaf_arm/cmd_vel</topic>
+      <topic>catapaf_arm/position</topic>
+      <p_gain>3.0</p_gain>
+      <i_gain>0.0</i_gain>
+      <d_gain>2.0</d_gain>
+      <i_max>0.5</i_max>
+      <i_min>-0.5</i_min>
+      <cmd_max>10.0</cmd_max>
+      <cmd_min>-10.0</cmd_min>
     </plugin>
   </gazebo>
-
-
-  <gazebo>
-    <plugin name="camera_info" filename="gz-sim-ros2-camera-system">
-      <topic>camera/camera_info</topic>
-    </plugin>
-  </gazebo>
-
 </robot>
