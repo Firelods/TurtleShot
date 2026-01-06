@@ -17,6 +17,9 @@ def generate_launch_description():
     params_file = LaunchConfiguration('params_file',
                                       default=os.path.join(pkg_catapaf_gazebo, 'config', 'nav2', 'nav2_params.yaml'))
     
+    slam_params_file = LaunchConfiguration('slam_params_file',
+                                      default=os.path.join(pkg_catapaf_gazebo, 'config', 'nav2', 'slam_params_online_async.yaml'))
+
     # We will use SLAM by default since we don't have a map
     slam = LaunchConfiguration('slam', default='True')
 
@@ -28,6 +31,7 @@ def generate_launch_description():
             'use_sim_time': use_sim_time,
             'params_file': params_file,
             'slam': slam,
+            'slam_params_file': slam_params_file,
             'map': '', # No map provided, SLAM will generate it
         }.items()
     )
@@ -45,6 +49,10 @@ def generate_launch_description():
             'slam',
             default_value='True',
             description='Whether to run SLAM'),
+        DeclareLaunchArgument(
+            'slam_params_file',
+            default_value=os.path.join(pkg_catapaf_gazebo, 'config', 'nav2', 'slam_params_online_async.yaml'),
+            description='Full path to the ROS2 parameters file to use for SLAM Toolbox'),
 
         nav2_launch
     ])
