@@ -1,0 +1,87 @@
+<?xml version="1.0"?>
+<!--
+  TurtleShot Complete Mission Behavior Tree
+
+  Mission Flow:
+  1. Find person with ball (vision detection with retry)
+  2. Navigate to person (Nav2)
+  3. Wait for person to be in catapult range (LiDAR with retry)
+  4. Find trash bin (vision detection with retry)
+  5. Navigate to trash bin (Nav2)
+  6. Fire catapult
+
+  This XML can be edited in Groot2.
+  Connect Groot2 Monitor to ports 1666/1667 for live monitoring.
+-->
+
+<root main_tree_to_execute="TurtleShotMission">
+
+  <BehaviorTree ID="TurtleShotMission">
+    <Sequence name="MissionSequence">
+
+      <!-- Step 1: Find person with ball (retry until detected) -->
+      <Retry num_attempts="30" name="FindPersonRetry">
+        <Condition ID="HasTarget" target_type="person" name="DetectPerson"/>
+      </Retry>
+
+      <!-- Step 2: Navigate to person -->
+      <Action ID="NavigateToPose"
+              x="1.0"
+              y="0.5"
+              yaw="0.0"
+              name="ApproachPerson"/>
+
+      <!-- Step 3: Wait for person to be in catapult range -->
+      <Retry num_attempts="20" name="WaitForPersonInRange">
+        <Condition ID="TargetInRange" range="0.5" name="CheckPersonRange"/>
+      </Retry>
+
+      <!-- Step 4: Find trash bin -->
+      <Retry num_attempts="30" name="FindTrashRetry">
+        <Condition ID="HasTarget" target_type="trash" name="DetectTrashBin"/>
+      </Retry>
+
+      <!-- Step 5: Navigate to trash bin -->
+      <Action ID="NavigateToPose"
+              x="2.0"
+              y="1.5"
+              yaw="1.57"
+              name="ApproachTrashBin"/>
+
+      <!-- Step 6: Fire the catapult -->
+      <Action ID="FireCatapult" name="ShootBall"/>
+
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- Node Metadata for Groot2 -->
+  <TreeNodesModel>
+
+    <!-- Actions -->
+    <Action ID="NavigateToPose">
+      <input_port name="x" default="0.0">Target X position (meters)</input_port>
+      <input_port name="y" default="0.0">Target Y position (meters)</input_port>
+      <input_port name="yaw" default="0.0">Target yaw orientation (radians)</input_port>
+    </Action>
+
+    <Action ID="FireCatapult">
+      <output_port name="success">Whether catapult fired successfully</output_port>
+    </Action>
+
+    <!-- Conditions -->
+    <Condition ID="HasTarget">
+      <input_port name="target_type" default="person">Type of target to detect (person, trash, ball)</input_port>
+    </Condition>
+
+    <Condition ID="TargetInRange">
+      <input_port name="range" default="0.5">Distance threshold in meters</input_port>
+    </Condition>
+
+    <!-- Decorators -->
+    <Decorator ID="Retry">
+      <input_port name="num_attempts" default="3">Number of retry attempts</input_port>
+    </Decorator>
+
+  </TreeNodesModel>
+
+</root>

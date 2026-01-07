@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<!--
+  TurtleShot Mission with Custom Retry Decorator
+-->
+
+<root main_tree_to_execute="TurtleShotMission" BTCPP_format="4">
+
+  <BehaviorTree ID="TurtleShotMission">
+    <Sequence name="MissionSequence">
+
+      <!-- Find person (with retry) -->
+      <Retry num_attempts="30" name="FindPersonRetry">
+        <Condition ID="HasTarget" target_type="person" name="DetectPerson"/>
+      </Retry>
+
+      <!-- Navigate to person -->
+      <Action ID="NavigateToPose" x="1.0" y="0.5" yaw="0.0" name="ApproachPerson"/>
+
+      <!-- Check person in range (with retry) -->
+      <Retry num_attempts="20" name="WaitForRange">
+        <Condition ID="TargetInRange" range="0.5" name="CheckRange"/>
+      </Retry>
+
+      <!-- Find trash -->
+      <Retry num_attempts="30" name="FindTrashRetry">
+        <Condition ID="HasTarget" target_type="trash" name="DetectTrash"/>
+      </Retry>
+
+      <!-- Navigate to trash -->
+      <Action ID="NavigateToPose" x="2.0" y="1.5" yaw="1.57" name="ApproachTrash"/>
+
+      <!-- Fire -->
+      <Action ID="FireCatapult" name="Fire"/>
+
+    </Sequence>
+  </BehaviorTree>
+
+  <TreeNodesModel>
+    <Action ID="NavigateToPose">
+      <input_port name="x">X position</input_port>
+      <input_port name="y">Y position</input_port>
+      <input_port name="yaw">Orientation</input_port>
+    </Action>
+
+    <Action ID="FireCatapult">
+    </Action>
+
+    <Condition ID="HasTarget">
+      <input_port name="target_type">Target type</input_port>
+    </Condition>
+
+    <Condition ID="TargetInRange">
+      <input_port name="range">Range threshold</input_port>
+    </Condition>
+
+    <Decorator ID="Retry">
+      <input_port name="num_attempts">Number of attempts</input_port>
+    </Decorator>
+  </TreeNodesModel>
+
+</root>

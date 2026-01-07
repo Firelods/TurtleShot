@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<!--
+  Simple Test Behavior Tree
+
+  Just checks conditions without complex decorators
+-->
+<root main_tree_to_execute="TestTree" BTCPP_format="4">
+
+  <BehaviorTree ID="TestTree">
+    <Sequence name="TestSequence">
+
+      <!-- Simple condition check -->
+      <Condition ID="HasTarget" target_type="person" name="CheckPerson"/>
+
+      <!-- If that works, try another -->
+      <Condition ID="TargetInRange" range="1.0" name="CheckRange"/>
+
+    </Sequence>
+  </BehaviorTree>
+
+  <TreeNodesModel>
+    <Condition ID="HasTarget">
+      <input_port name="target_type" default="person">Type of target</input_port>
+    </Condition>
+
+    <Condition ID="TargetInRange">
+      <input_port name="range" default="0.5">Range threshold</input_port>
+    </Condition>
+  </TreeNodesModel>
+
+</root>
