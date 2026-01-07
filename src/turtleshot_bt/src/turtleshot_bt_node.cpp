@@ -1,7 +1,9 @@
 #include <rclcpp/rclcpp.hpp>
-#include <behaviortree_cpp_v3/bt_factory.h>
-#include <behaviortree_cpp_v3/loggers/bt_zmq_publisher.h>
-#include <behaviortree_cpp_v3/loggers/bt_file_logger.h>
+#include <behaviortree_cpp/bt_factory.h>
+#include <behaviortree_cpp/loggers/groot2_publisher.h>
+#include <behaviortree_cpp/decorators/retry_node.h>
+#include <behaviortree_cpp/controls/fallback_node.h>
+#include <behaviortree_cpp/controls/reactive_sequence.h>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
 // Include custom BT nodes
@@ -9,7 +11,6 @@
 #include "turtleshot_bt/actions/fire_catapult_action.hpp"
 #include "turtleshot_bt/conditions/has_target_condition.hpp"
 #include "turtleshot_bt/conditions/target_in_range_condition.hpp"
-#include "turtleshot_bt/decorators/retry_decorator.hpp"
 
 int main(int argc, char ** argv)
 {
@@ -22,6 +23,9 @@ int main(int argc, char ** argv)
 
   // Create BehaviorTree factory
   BT::BehaviorTreeFactory factory;
+
+  // Register Retry decorator (others like Fallback, ReactiveSequence are already registered)
+  factory.registerNodeType<BT::RetryNode>("Retry");
 
   // Register custom BT nodes
   RCLCPP_INFO(node->get_logger(), "Registering BT nodes...");
@@ -47,9 +51,6 @@ int main(int argc, char ** argv)
     return std::make_unique<turtleshot_bt::TargetInRangeCondition>(name, config, node);
   };
   factory.registerBuilder<turtleshot_bt::TargetInRangeCondition>("TargetInRange", target_range_builder);
-
-  // Register Decorators
-  factory.registerNodeType<turtleshot_bt::RetryDecorator>("Retry");
 
   RCLCPP_INFO(node->get_logger(), "✓ Registered %zu BT node types", factory.manifests().size());
 
@@ -77,9 +78,9 @@ int main(int argc, char ** argv)
     return 1;
   }
 
-  // Setup ZMQ publisher for Groot2 live monitoring
-  BT::PublisherZMQ publisher_zmq(tree, 10, 1666, 1667);
-  RCLCPP_INFO(node->get_logger(), "✓ ZMQ Publisher started (ports: 1666/1667)");
+  // Setup Groot2 publisher for live monitoring
+  BT::Groot2Publisher publisher_zmq(tree);
+  RCLCPP_INFO(node->get_logger(), "✓ Groot2 Publisher started (ports: 1666/1667)");
   RCLCPP_INFO(node->get_logger(), "  → In Groot2: Monitor → Connect");
   RCLCPP_INFO(node->get_logger(), "     Publisher port: 1666");
   RCLCPP_INFO(node->get_logger(), "     Server port: 1667");
@@ -98,7 +99,7 @@ int main(int argc, char ** argv)
 
   while (rclcpp::ok()) {
     // Tick the tree une fois
-    status = tree.tickRoot();
+    status = tree.tickOnce();
 
     // Process ROS2 callbacks
     rclcpp::spin_some(node);

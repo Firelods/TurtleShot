@@ -18,7 +18,7 @@ NavigateToPoseAction::NavigateToPoseAction(
   // Create action client
   action_client_ = rclcpp_action::create_client<NavigateToPose>(node_, "navigate_to_pose");
 
-  RCLCPP_INFO(node_->get_logger(), "NavigateToPoseAction initialized");
+  RCLCPP_INFO(node_->get_logger(), "NavigateToPoseAction initialized (server: /navigate_to_pose)");
 }
 
 BT::NodeStatus NavigateToPoseAction::onStart()
@@ -43,10 +43,13 @@ BT::NodeStatus NavigateToPoseAction::onStart()
   }
 
   // Wait for action server
-  if (!action_client_->wait_for_action_server(std::chrono::seconds(5))) {
-    RCLCPP_ERROR(node_->get_logger(), "Action server not available after waiting");
+  RCLCPP_INFO(node_->get_logger(), "Waiting for Nav2 action server 'navigate_to_pose'...");
+  if (!action_client_->wait_for_action_server(std::chrono::seconds(30))) {
+    RCLCPP_ERROR(node_->get_logger(), "Action server 'navigate_to_pose' not available after waiting 10 seconds");
+    RCLCPP_ERROR(node_->get_logger(), "Is Nav2 running? Check: ros2 action list | grep navigate_to_pose");
     return BT::NodeStatus::FAILURE;
   }
+  RCLCPP_INFO(node_->get_logger(), "✓ Nav2 action server connected");
 
   // Create goal
   auto goal_msg = NavigateToPose::Goal();

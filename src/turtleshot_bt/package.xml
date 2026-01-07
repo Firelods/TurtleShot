@@ -16,7 +16,7 @@
   <depend>rclcpp_components</depend>
 
   <!-- BehaviorTree.CPP dependencies -->
-  <depend>behaviortree_cpp_v3</depend>
+  <depend>behaviortree_cpp</depend>
 
   <!-- Message/Action dependencies -->
   <depend>nav2_msgs</depend>

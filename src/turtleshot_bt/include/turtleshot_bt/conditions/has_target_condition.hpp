@@ -1,7 +1,7 @@
 #ifndef TURTLESHOT_BT__CONDITIONS__HAS_TARGET_CONDITION_HPP_
 #define TURTLESHOT_BT__CONDITIONS__HAS_TARGET_CONDITION_HPP_
 
-#include <behaviortree_cpp_v3/condition_node.h>
+#include <behaviortree_cpp/condition_node.h>
 #include <rclcpp/rclcpp.hpp>
 #include <vision_msgs/msg/detection2_d_array.hpp>
 

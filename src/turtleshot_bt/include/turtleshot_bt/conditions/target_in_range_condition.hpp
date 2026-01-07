@@ -1,7 +1,7 @@
 #ifndef TURTLESHOT_BT__CONDITIONS__TARGET_IN_RANGE_CONDITION_HPP_
 #define TURTLESHOT_BT__CONDITIONS__TARGET_IN_RANGE_CONDITION_HPP_
 
-#include <behaviortree_cpp_v3/condition_node.h>
+#include <behaviortree_cpp/condition_node.h>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 

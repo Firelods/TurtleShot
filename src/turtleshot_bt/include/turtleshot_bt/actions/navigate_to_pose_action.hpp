@@ -1,7 +1,7 @@
 #ifndef TURTLESHOT_BT__ACTIONS__NAVIGATE_TO_POSE_ACTION_HPP_
 #define TURTLESHOT_BT__ACTIONS__NAVIGATE_TO_POSE_ACTION_HPP_
 
-#include <behaviortree_cpp_v3/action_node.h>
+#include <behaviortree_cpp/action_node.h>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <nav2_msgs/action/navigate_to_pose.hpp>

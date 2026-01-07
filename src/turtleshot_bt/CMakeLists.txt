@@ -14,7 +14,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
-find_package(behaviortree_cpp_v3 REQUIRED)
+find_package(behaviortree_cpp REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -29,7 +29,7 @@ find_package(ament_index_cpp REQUIRED)
 include_directories(
   include
   ${rclcpp_INCLUDE_DIRS}
-  ${behaviortree_cpp_v3_INCLUDE_DIRS}
+  ${behaviortree_cpp_INCLUDE_DIRS}
 )
 
 # List of dependencies
@@ -37,7 +37,7 @@ set(dependencies
   rclcpp
   rclcpp_action
   rclcpp_components
-  behaviortree_cpp_v3
+  behaviortree_cpp
   nav2_msgs
   geometry_msgs
   sensor_msgs
@@ -61,7 +61,7 @@ add_executable(turtleshot_bt_node
 ament_target_dependencies(turtleshot_bt_node ${dependencies})
 
 target_link_libraries(turtleshot_bt_node
-  ${behaviortree_cpp_v3_LIBRARIES}
+  ${behaviortree_cpp_LIBRARIES}
 )
 
 # Install executables
