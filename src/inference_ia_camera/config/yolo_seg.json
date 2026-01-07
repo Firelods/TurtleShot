@@ -1,0 +1,13 @@
+{
+  "input_shape": [1, 3, 640, 640],
+  "output0_shape": [1, 39, 8400],
+  "output1_shape": [1, 32, 160, 160],
+  "class_names": ["Red Ball", "Human", "Trashcan"],
+  "nc": 3,
+  "nm": 32,
+  "boxes_format": "cxcywh",
+  "boxes_normalized": false,
+  "conf_threshold": 0.25,
+  "iou_threshold": 0.45,
+  "mask_threshold": 0.5
+}

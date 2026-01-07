@@ -1,0 +1,6 @@
+{
+  "input_shape": [1, 3, 640, 640],
+  "output0_shape": [1, 39, 8400],
+  "output1_shape": [1, 32, 160, 160],
+  "class_names": ["Red Ball", "Human", "Trashcan"]
+}
