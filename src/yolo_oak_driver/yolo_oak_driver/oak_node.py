@@ -19,7 +19,7 @@ class OakYoloSegDriver(Node):
         self.bridge = CvBridge()
 
         pkg = get_package_share_directory("yolo_oak_driver")
-        self.blob_path = os.path.join(pkg, "models", "model.blob")
+        self.blob_path = os.path.join(pkg, "models", "model_V2.blob")
         cfg_path = os.path.join(pkg, "helpers", "config.json")
 
         with open(cfg_path, "r") as f:
@@ -40,7 +40,7 @@ class OakYoloSegDriver(Node):
             (0, 255, 0),
         ]
         
-        self.conf_threshold = 0.25
+        self.conf_threshold = 0.2
         self.iou_threshold = 0.45
         self.mask_threshold = 0.5
 
@@ -69,7 +69,7 @@ class OakYoloSegDriver(Node):
         cam = p.create(dai.node.ColorCamera)
         cam.setPreviewSize(self.input_w, self.input_h)
         cam.setInterleaved(False)
-        cam.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
+        cam.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)  # BGR car le blob a --reverse_input_channels
         cam.setFps(30)
 
         mono_left = p.create(dai.node.MonoCamera)
@@ -94,6 +94,35 @@ class OakYoloSegDriver(Node):
 
         return p, cam, nn, stereo
 
+    def sigmoid(self, x):
+        """Fonction sigmoid pour normaliser les scores"""
+        return 1.0 / (1.0 + np.exp(-np.clip(x, -50, 50)))
+
+    def nms_xyxy(self, boxes, scores, iou_th):
+        """Non-Maximum Suppression pour éliminer les détections qui se chevauchent"""
+        if len(boxes) == 0:
+            return []
+        boxes = boxes.astype(np.float32)
+        scores = scores.astype(np.float32)
+        x1, y1, x2, y2 = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
+        areas = (x2 - x1 + 1.0) * (y2 - y1 + 1.0)
+        order = scores.argsort()[::-1]
+        keep = []
+        while order.size > 0:
+            i = order[0]
+            keep.append(i)
+            xx1 = np.maximum(x1[i], x1[order[1:]])
+            yy1 = np.maximum(y1[i], y1[order[1:]])
+            xx2 = np.minimum(x2[i], x2[order[1:]])
+            yy2 = np.minimum(y2[i], y2[order[1:]])
+            w_ = np.maximum(0.0, xx2 - xx1 + 1.0)
+            h_ = np.maximum(0.0, yy2 - yy1 + 1.0)
+            inter = w_ * h_
+            iou = inter / (areas[i] + areas[order[1:]] - inter + 1e-6)
+            inds = np.where(iou <= iou_th)[0]
+            order = order[inds + 1]
+        return keep
+
     def decode_detections(self, out0, out1, img_shape):
         h, w = img_shape
         pred = out0.reshape(self.output0_shape)
@@ -106,15 +135,28 @@ class OakYoloSegDriver(Node):
         cls_scores = pred[4:4+self.nc, :]
         mask_coeff = pred[4+self.nc:4+self.nc+self.nm, :]
         
+        # Pour chaque détection, prendre la classe avec le score maximum
         cls_id = np.argmax(cls_scores, axis=0)
-        scores = cls_scores[cls_id, np.arange(cls_scores.shape[1])]
+        max_scores = np.max(cls_scores, axis=0)
         
-        keep = scores > self.conf_threshold
+        # Debug: afficher les scores des 3 classes pour les meilleures détections
+        if np.max(max_scores) > 0.3:
+            best_idx = np.argmax(max_scores)
+            class_scores = cls_scores[:, best_idx]
+            self.get_logger().info(
+                f"Meilleure détection - Scores par classe: "
+                f"Red Ball={class_scores[0]:.3f}, Human={class_scores[1]:.3f}, Trashcan={class_scores[2]:.3f} "
+                f"=> Classe choisie: {cls_id[best_idx]} ({self.class_names[cls_id[best_idx]]})",
+                throttle_duration_sec=2.0
+            )
+        
+        # Filtrer par seuil de confiance
+        keep = max_scores > self.conf_threshold
         if not np.any(keep):
             return []
         
         boxes = boxes[:, keep]
-        scores = scores[keep]
+        scores = max_scores[keep]
         cls_id = cls_id[keep]
         mask_coeff = mask_coeff[:, keep]
         
@@ -124,8 +166,12 @@ class OakYoloSegDriver(Node):
         x2 = np.clip((cx + bw / 2.0), 0, w - 1).astype(int)
         y2 = np.clip((cy + bh / 2.0), 0, h - 1).astype(int)
         
+        # Appliquer NMS pour éliminer les détections qui se chevauchent
+        boxes_xyxy = np.stack([x1, y1, x2, y2], axis=1)
+        keep_idx = self.nms_xyxy(boxes_xyxy, scores, self.iou_threshold)
+        
         detections = []
-        for i in range(len(scores)):
+        for i in keep_idx:
             coeff = mask_coeff[:, i]
             mask = (coeff.reshape(1, -1) @ protos.reshape(self.nm, -1)).reshape(160, 160)
             mask = 1 / (1 + np.exp(-mask))
@@ -148,6 +194,11 @@ class OakYoloSegDriver(Node):
         for det in detections:
             cls_id = det['class']
             score = det['score']
+            
+            # Ne dessiner que si le score est > 0.2
+            if score <= 0.2:
+                continue
+                
             mask = det['mask']
             x1, y1, x2, y2 = det['bbox']
             
