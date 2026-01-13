@@ -1,15 +1,5 @@
 #!/bin/bash
 
-# Kill existing processes
-echo "Killing existing ROS 2 processes..."
-pkill -f ros2
-pkill -f nav2
-pkill -f gz
-pkill -f bt_executor
-pkill -f video_inference_node
-pkill -f autonomous_explorer
-pkill -f arm_controller
-
 echo "Building packages..."
 colcon build --packages-select catapaf_interfaces catapaf_description catapaf_gazebo catapaf_bt distance_to_pwm video_to_ai
 
@@ -42,12 +32,6 @@ if [ ! -f "cyclonedds.xml" ]; then
 </CycloneDDS>' > cyclonedds.xml
 fi
 
-echo "Launching Gazebo Simulation..."
-ros2 launch catapaf_gazebo gz_simulation.launch.py &
-PID_GZ=$!
-
-echo "Waiting for Gazebo to start (60s)..."
-sleep 60
 
 echo "Launching Navigation..."
 ros2 launch catapaf_gazebo navigation.launch.py &
@@ -66,7 +50,7 @@ else
 fi
 
 echo "Launching Auxiliary Nodes (AI, PWM)..."
-ros2 run video_to_ai video_inference_node &
+# ros2 run video_to_ai video_inference_node &
 # Add distance_to_pwm only if a specific launch file or node is needed, usually part of sim launch but safe to keep noted
 # ros2 launch distance_to_pwm converter.launch.py & 
 
