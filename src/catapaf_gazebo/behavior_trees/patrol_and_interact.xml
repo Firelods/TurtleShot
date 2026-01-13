@@ -43,7 +43,8 @@
                     <TriggerArm/>
                 </Sequence>
 
-                <!-- Priority 2: Explore / Random Walk (and mapping) -->
+
+                <!-- Priority 2: Random Walk to find human/dustbin -->
                 <RandomWalk/>
             </ReactiveFallback>
         </Parallel>
@@ -65,6 +66,9 @@
             <input_port name="duration">Duration in seconds</input_port>
         </Action>
         <Action ID="TriggerArm"/>
+        <Action ID="GetPatrolPoint">
+            <output_port name="output_pose">Next patrol waypoint pose</output_port>
+        </Action>
         <Action ID="RandomWalk"/>
     </TreeNodesModel>
 </root>

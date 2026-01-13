@@ -11,7 +11,7 @@ pkill -f autonomous_explorer
 pkill -f arm_controller
 
 echo "Building packages..."
-colcon build --packages-select catapaf_interfaces video_to_ai catapaf_gazebo catapaf_bt
+colcon build --packages-select catapaf_interfaces catapaf_description catapaf_gazebo catapaf_bt distance_to_pwm video_to_ai
 
 echo "Sourcing environment..."
 source install/setup.bash
@@ -54,19 +54,27 @@ ros2 launch catapaf_gazebo navigation.launch.py &
 PID_NAV=$!
 
 echo "Waiting for Nav2 to be ready..."
-./wait_for_nav2.sh 120
-if [ $? -ne 0 ]; then
-    echo "ERROR: Nav2 failed to start properly!"
-    exit 1
+if [ -f "./wait_for_nav2.sh" ]; then
+    ./wait_for_nav2.sh 120
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Nav2 failed to start properly!"
+        exit 1
+    fi
+else
+    echo "Warning: wait_for_nav2.sh not found, waiting 30 seconds manually..."
+    sleep 30
 fi
 
-echo "Launching Behavior Tree Nodes..."
+echo "Launching Auxiliary Nodes (AI, PWM)..."
 ros2 run video_to_ai video_inference_node &
-ros2 run catapaf_gazebo autonomous_explorer &
-ros2 run catapaf_gazebo arm_controller &
+# Add distance_to_pwm only if a specific launch file or node is needed, usually part of sim launch but safe to keep noted
+# ros2 launch distance_to_pwm converter.launch.py & 
 
-echo "Launching BT Executor..."
+echo "Launching Behavior Tree Executor..."
 ros2 run catapaf_bt bt_executor &
+PID_BT=$!
 
 echo "System Launched. Monitor via Groot2."
-wait $PID_NAV
+echo "Press Ctrl+C to stop all processes."
+
+wait $PID_BT
