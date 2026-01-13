@@ -13,6 +13,9 @@ import json
 import traceback
 from ultralytics import YOLO
 import struct
+from catapaf_interfaces.srv import GetDetection
+from geometry_msgs.msg import PoseStamped
+
 
 class VideoInferenceNode(Node):
     def __init__(self):
@@ -67,6 +70,54 @@ class VideoInferenceNode(Node):
 
         self.get_logger().info("video_inference_node started")
 
+        self.latest_detections = []
+        self.detection_service = self.create_service(
+            GetDetection, 
+            'get_detection', 
+            self.handle_get_detection
+        )
+
+    def handle_get_detection(self, request, response):
+        target_label = request.label.lower()
+        self.get_logger().info(f"Requête de détection pour : {target_label}")
+        
+        best_detection = None
+        max_score = -1.0
+
+        for det in self.latest_detections:
+            # Check similarity or exact match
+            if target_label in det['label'].lower():
+                if det['score'] > max_score:
+                    max_score = det['score']
+                    best_detection = det
+        
+        if best_detection and best_detection['position_3d']['x'] is not None:
+            response.is_detected = True
+            
+            # Fill PoseStamped
+            # Note: The coordinates are camera optical frame usually. 
+            # Ideally we should transform to map or base_link, but for now sending as is (or camera frame)
+            # The cloud callback usually gives points in the camera optical frame.
+            
+            response.pose = PoseStamped()
+            response.pose.header.frame_id = "camera_link_optical" # Assumption, might be depth_camera_link
+            if self.latest_cloud:
+                response.pose.header.frame_id = self.latest_cloud.header.frame_id
+                
+            response.pose.header.stamp = self.get_clock().now().to_msg()
+            
+            response.pose.pose.position.x = best_detection['position_3d']['x']
+            response.pose.pose.position.y = best_detection['position_3d']['y']
+            response.pose.pose.position.z = best_detection['position_3d']['z']
+            response.pose.pose.orientation.w = 1.0
+            
+            self.get_logger().info(f"Trouvé {target_label} à ({response.pose.pose.position.x:.2f}, {response.pose.pose.position.y:.2f}, {response.pose.pose.position.z:.2f})")
+        else:
+            response.is_detected = False
+            self.get_logger().info(f"Objet {target_label} NON trouvé.")
+
+        return response
+
     def image_callback(self, msg: Image):
         try:
             frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
@@ -105,6 +156,7 @@ class VideoInferenceNode(Node):
 
         h, w = frame.shape[:2]
         detections = []
+
         color_mask = np.zeros_like(frame)
         
         # Masque de segmentation
@@ -165,6 +217,8 @@ class VideoInferenceNode(Node):
         overlay = cv2.addWeighted(frame, 0.6, color_mask, 0.4, 0)
 
         result_dict = {"detections": detections}
+        self.latest_detections = detections # Update global latest detections
+
 
         return result_dict, overlay
     

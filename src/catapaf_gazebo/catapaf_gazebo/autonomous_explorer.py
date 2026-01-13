@@ -8,23 +8,43 @@ import numpy as np
 import scipy.ndimage
 import math
 import time
+from catapaf_interfaces.srv import GetRandomGoal
+
 
 class FrontierExplorer(Node):
     def __init__(self):
         super().__init__('frontier_explorer')
         self.navigator = BasicNavigator()
         
+        from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
+        
+        qos_map = QoSProfile(
+            depth=1,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=ReliabilityPolicy.RELIABLE
+        )
+
         # Subscribe to map
         self.map_subscription = self.create_subscription(
             OccupancyGrid,
             'map',
             self.map_callback,
-            10)
+            qos_map)
             
         self.latest_map = None
         
-        # Timer for the main control loop
-        self.timer = self.create_timer(1.0, self.control_loop)
+        self.latest_map = None
+        
+        # Service for Goal Generation
+        self.goal_service = self.create_service(
+            GetRandomGoal, 
+            'get_random_goal', 
+            self.handle_get_random_goal
+        )
+        
+        # DISABLE internal timer loop if we want external control (Behavior Tree)
+        # self.timer = self.create_timer(1.0, self.control_loop)
+
         
         # Exploration variables
         self.min_frontier_size = 10 # Minimum number of cells to be considered a valid frontier
@@ -35,6 +55,44 @@ class FrontierExplorer(Node):
         # Wait for Nav2 to be fully active
         # We do this in the loop to avoid blocking init
         self.nav2_active = False
+
+    def handle_get_random_goal(self, request, response):
+        self.get_logger().info("Requête de but aléatoire reçue.")
+        
+        if self.latest_map is None:
+            self.get_logger().warn("Carte non disponible.")
+            response.success = False
+            return response
+
+        try:
+            frontiers = self.get_frontiers(self.latest_map)
+        except Exception as e:
+            self.get_logger().error(f'Erreur recherche frontières: {e}')
+            response.success = False
+            return response
+
+        if not frontiers:
+             self.get_logger().info('Aucune frontière trouvée.')
+             response.success = False
+             return response
+
+        target = self.select_best_frontier(frontiers)
+        
+        if target:
+            tx, ty = target
+            response.success = True
+            response.goal_pose = PoseStamped()
+            response.goal_pose.header.frame_id = 'map'
+            response.goal_pose.header.stamp = self.get_clock().now().to_msg()
+            response.goal_pose.pose.position.x = tx
+            response.goal_pose.pose.position.y = ty
+            response.goal_pose.pose.orientation.w = 1.0
+            
+            self.get_logger().info(f"But renvoyé: ({tx:.2f}, {ty:.2f})")
+        else:
+             response.success = False
+        
+        return response
 
     def map_callback(self, msg):
         self.latest_map = msg

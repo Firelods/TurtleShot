@@ -15,7 +15,7 @@ setup(
         (os.path.join('share', package_name, 'models'),
             glob('models/*.pt')),
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'numpy<2'],
     zip_safe=True,
     maintainer='tom',
     maintainer_email='tom@todo.todo',
