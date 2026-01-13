@@ -304,6 +304,7 @@
             <diffuse>0.8 0.8 0.8 1</diffuse>
           </material>
         </visual>
+    
       </link>
       <link name='wall_2'>
         <pose>0 -6 1.5 0 0 0</pose>
@@ -513,36 +514,48 @@
       </link>
     </model>
 
-    <model name='first_2015_trash_can'>
+    <model name='poubelle_cube'>
+      <pose>-4 -2 0.25 0 0 0</pose>  
+      <static>1</static>
       <link name='link'>
-        <inertial>
-          <pose frame=''>-4 -2 0 0 0 0</pose>
-          <mass>5</mass>
-          <inertia>
-            <ixx>0.0</ixx>
-            <ixy>0</ixy>
-            <ixz>0</ixz>
-            <iyy>0.0</iyy>
-            <iyz>0</iyz>
-            <izz>0.0</izz>
-          </inertia>
-        </inertial>
-        <visual name='visual'>
-          <geometry>
-            <mesh>
-              <uri>model://catapaf_gazebo/models/first_2015_trash_can/meshes/trash_can.dae</uri>
-            </mesh>
-          </geometry>
-        </visual>
         <collision name='collision'>
           <geometry>
-            <mesh>
-              <uri>model://catapaf_gazebo/models/first_2015_trash_can/meshes/trash_can.dae</uri>
-            </mesh>
+            <box>
+              <size>0.3 0.5 0.5</size> 
+            </box>
           </geometry>
         </collision>
+        <visual name='visual'>
+          <geometry>
+            <box>
+              <size>0.3 0.5 0.5</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.1 0.1 0.8 1</ambient>
+            <diffuse>0.1 0.1 0.8 1</diffuse>
+          </material>
+        </visual>
+        <visual name='visual_poubelle_face'>
+          <pose>0.151 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.001 0.5 0.5</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>poubelle.png</albedo_map>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+
       </link>
-      <pose frame=''>-4 -2 0 0 0 0</pose>
     </model>
   </world>
 </sdf>
