@@ -1,4 +1,5 @@
 #include "turtleshot_bt/actions/navigate_to_pose_action.hpp"
+
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
@@ -15,10 +16,12 @@ NavigateToPoseAction::NavigateToPoseAction(
   goal_result_available_(false),
   result_status_(BT::NodeStatus::FAILURE)
 {
-  // Create action client
-  action_client_ = rclcpp_action::create_client<NavigateToPose>(node_, "navigate_to_pose");
+  // Create action client (nom de l'action Nav2)
+  action_client_ =
+    rclcpp_action::create_client<NavigateToPose>(node_, "navigate_to_pose");
 
-  RCLCPP_INFO(node_->get_logger(), "NavigateToPoseAction initialized (server: /navigate_to_pose)");
+  RCLCPP_INFO(node_->get_logger(),
+              "NavigateToPoseAction initialized (server: /navigate_to_pose)");
 }
 
 BT::NodeStatus NavigateToPoseAction::onStart()
@@ -43,10 +46,13 @@ BT::NodeStatus NavigateToPoseAction::onStart()
   }
 
   // Wait for action server
-  RCLCPP_INFO(node_->get_logger(), "Waiting for Nav2 action server 'navigate_to_pose'...");
+  RCLCPP_INFO(node_->get_logger(),
+              "Waiting for Nav2 action server 'navigate_to_pose'...");
   if (!action_client_->wait_for_action_server(std::chrono::seconds(30))) {
-    RCLCPP_ERROR(node_->get_logger(), "Action server 'navigate_to_pose' not available after waiting 10 seconds");
-    RCLCPP_ERROR(node_->get_logger(), "Is Nav2 running? Check: ros2 action list | grep navigate_to_pose");
+    RCLCPP_ERROR(node_->get_logger(),
+                 "Action server 'navigate_to_pose' not available after waiting 30 seconds");
+    RCLCPP_ERROR(node_->get_logger(),
+                 "Is Nav2 running? Check: ros2 action list | grep navigate_to_pose");
     return BT::NodeStatus::FAILURE;
   }
   RCLCPP_INFO(node_->get_logger(), "✓ Nav2 action server connected");
@@ -70,16 +76,22 @@ BT::NodeStatus NavigateToPoseAction::onStart()
     x, y, yaw);
 
   // Send goal
-  auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
+  auto send_goal_options =
+    rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
 
+  // Callback de résultat
   send_goal_options.result_callback =
-    [this](const GoalHandleNav::WrappedResult & result) {
+    [this](const GoalHandleNav::WrappedResult & result)
+    {
       goal_result_available_ = true;
+
       if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
         RCLCPP_INFO(node_->get_logger(), "Navigation succeeded!");
         result_status_ = BT::NodeStatus::SUCCESS;
       } else {
-        RCLCPP_ERROR(node_->get_logger(), "Navigation failed");
+        RCLCPP_ERROR(node_->get_logger(),
+                     "Navigation failed with result code: %d",
+                     static_cast<int>(result.code));
         result_status_ = BT::NodeStatus::FAILURE;
       }
     };
@@ -108,7 +120,8 @@ void NavigateToPoseAction::onHalted()
   // Cancel goal if it was sent
   if (goal_sent_ && !goal_result_available_) {
     if (goal_handle_future_.valid() &&
-        goal_handle_future_.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready)
+        goal_handle_future_.wait_for(std::chrono::milliseconds(0)) ==
+          std::future_status::ready)
     {
       auto goal_handle = goal_handle_future_.get();
       if (goal_handle) {

@@ -1,119 +1,99 @@
 <?xml version="1.0"?>
-<!--
-  TurtleShot Complete Mission Behavior Tree
-
-  Mission Flow:
-  1. Find person with ball (vision detection with retry)
-  2. Navigate to person (Nav2)
-  3. Wait for person to be in catapult range (LiDAR with retry)
-  4. Find trash bin (vision detection with retry)
-  5. Navigate to trash bin (Nav2)
-  6. Fire catapult
-
-  This XML can be edited in Groot2.
-  Connect Groot2 Monitor to ports 1666/1667 for live monitoring.
--->
 
 <root main_tree_to_execute="TurtleShotMission" BTCPP_format="4">
 
+  <!-- ===================== -->
+  <!-- ARBRE PRINCIPAL       -->
+  <!-- ===================== -->
   <BehaviorTree ID="TurtleShotMission">
     <Sequence name="MissionSequence">
 
-      <!-- Step 1: Search for person by patrolling -->
-      <ReactiveSequence name="SearchForPerson">
-        <Fallback name="PatrolUntilFound">
-          <!-- Check if person already detected -->
-          <Condition ID="HasTarget" target_type="person" name="CheckPerson"/>
-          
-          <!-- Otherwise, patrol between viewpoints -->
-          <Sequence name="PatrolSequence">
-            <!-- Viewpoint 1 -->
-            <Action ID="NavigateToPose" x="1.0" y="1.0" yaw="0.0" name="Viewpoint1"/>
-            <Condition ID="HasTarget" target_type="person" name="CheckFromView1"/>
-            
-            <!-- Viewpoint 2 -->
-            <Action ID="NavigateToPose" x="2.0" y="0.0" yaw="1.57" name="Viewpoint2"/>
-            <Condition ID="HasTarget" target_type="person" name="CheckFromView2"/>
-            
-            <!-- Viewpoint 3 -->
-            <Action ID="NavigateToPose" x="1.0" y="-1.0" yaw="3.14" name="Viewpoint3"/>
-            <Condition ID="HasTarget" target_type="person" name="CheckFromView3"/>
-            
-            <!-- Viewpoint 4 -->
-            <Action ID="NavigateToPose" x="0.0" y="0.0" yaw="-1.57" name="Viewpoint4"/>
-            <Condition ID="HasTarget" target_type="person" name="CheckFromView4"/>
-          </Sequence>
-        </Fallback>
-      </ReactiveSequence>
+      <!-- 1) Explorer jusqu'à trouver une personne -->
+      <SubTree ID="ExploreUntilTargetFound"
+               target_type="person"
+               target_x="{person_x}"
+               target_y="{person_y}"
+               target_yaw="{person_yaw}"/>
 
-      <!-- Step 2: Navigate to person's location -->
+      <!-- 2) Aller vers la personne -->
       <Action ID="NavigateToPose"
-              x="1.0"
-              y="0.5"
-              yaw="0.0"
-              name="ApproachPerson"/>
+              x="{person_x}"
+              y="{person_y}"
+              yaw="{person_yaw}"
+              name="GoToPerson"/>
 
-      <!-- Step 3: Wait for person to be in catapult range -->
-      <Retry num_attempts="20" name="WaitForPersonInRange">
-        <Condition ID="TargetInRange" range="0.5" name="CheckPersonRange"/>
-      </Retry>
+      <!-- 3) Explorer jusqu'à trouver la poubelle -->
+      <SubTree ID="ExploreUntilTargetFound"
+               target_type="trash"
+               target_x="{trash_x}"
+               target_y="{trash_y}"
+               target_yaw="{trash_yaw}"/>
 
-      <!-- Step 4: Search for trash bin -->
-      <ReactiveSequence name="SearchForTrash">
-        <Fallback name="PatrolForTrash">
-          <Condition ID="HasTarget" target_type="trash" name="CheckTrash"/>
-          
-          <Sequence name="ScanForTrash">
-            <Action ID="NavigateToPose" x="2.0" y="1.0" yaw="0.0" name="TrashView1"/>
-            <Condition ID="HasTarget" target_type="trash" name="CheckFromTrashView1"/>
-            
-            <Action ID="NavigateToPose" x="3.0" y="1.5" yaw="1.57" name="TrashView2"/>
-            <Condition ID="HasTarget" target_type="trash" name="CheckFromTrashView2"/>
-          </Sequence>
-        </Fallback>
-      </ReactiveSequence>
-
-      <!-- Step 5: Navigate to trash bin -->
+      <!-- 4) Aller vers la poubelle -->
       <Action ID="NavigateToPose"
-              x="2.0"
-              y="1.5"
-              yaw="1.57"
-              name="ApproachTrashBin"/>
+              x="{trash_x}"
+              y="{trash_y}"
+              yaw="{trash_yaw}"
+              name="GoToTrash"/>
 
-      <!-- Step 6: Fire the catapult -->
-      <Action ID="FireCatapult" name="ShootBall"/>
+      <!-- 5) Tirer -->
+      <Action ID="FireCatapult" name="LaunchProjectile"/>
 
     </Sequence>
   </BehaviorTree>
 
-  <!-- Node Metadata for Groot2 -->
+  <!-- ============================================== -->
+  <!-- SOUS-ARBRE : Explorer jusqu'à détecter la cible -->
+  <!-- ============================================== -->
+  <BehaviorTree ID="ExploreUntilTargetFound">
+    <!--
+      Répète indéfiniment :
+        - Si HasTarget(target_type) -> SUCCESS (on sort du subtree)
+        - Sinon, on patrouille
+    -->
+    <RetryUntilSuccessful num_attempts="-1">
+      <Fallback name="SearchTarget">
+        <!-- Condition : la cible est déjà détectée ? -->
+        <Condition ID="HasTarget"
+                   target_type="{target_type}"
+                   target_x="{target_x}"
+                   target_y="{target_y}"
+                   target_yaw="{target_yaw}"
+                   name="CheckTargetDetected"/>
+
+        <!-- Sinon, on patrouille pour cartographier et chercher -->
+        <Sequence name="PatrolSequence">
+          <Action ID="NavigateToPose" x="2.0"  y="2.0"  yaw="0.0"    name="WP1"/>
+          <Action ID="NavigateToPose" x="-2.0" y="2.0"  yaw="1.57"   name="WP2"/>
+          <Action ID="NavigateToPose" x="-2.0" y="-2.0" yaw="3.14"   name="WP3"/>
+          <Action ID="NavigateToPose" x="2.0"  y="-2.0" yaw="-1.57"  name="WP4"/>
+        </Sequence>
+      </Fallback>
+    </RetryUntilSuccessful>
+  </BehaviorTree>
+
+  <!-- ===================== -->
+  <!-- DÉCLARATION DES NŒUDS -->
+  <!-- ===================== -->
   <TreeNodesModel>
-
-    <!-- Actions -->
     <Action ID="NavigateToPose">
-      <input_port name="x" default="0.0">Target X position (meters)</input_port>
-      <input_port name="y" default="0.0">Target Y position (meters)</input_port>
-      <input_port name="yaw" default="0.0">Target yaw orientation (radians)</input_port>
+      <input_port name="x">X position in map frame</input_port>
+      <input_port name="y">Y position in map frame</input_port>
+      <input_port name="yaw">Orientation in radians</input_port>
     </Action>
 
-    <Action ID="FireCatapult">
-      <output_port name="success">Whether catapult fired successfully</output_port>
-    </Action>
+    <Action ID="FireCatapult"/>
 
-    <!-- Conditions -->
     <Condition ID="HasTarget">
-      <input_port name="target_type" default="person">Type of target to detect (person, trash, ball)</input_port>
+      <input_port name="target_type">Type of target (person/trash)</input_port>
+      <output_port name="target_x">Detected X position</output_port>
+      <output_port name="target_y">Detected Y position</output_port>
+      <output_port name="target_yaw">Detected orientation</output_port>
     </Condition>
 
-    <Condition ID="TargetInRange">
-      <input_port name="range" default="0.5">Distance threshold in meters</input_port>
-    </Condition>
-
-    <!-- Decorators -->
-    <Decorator ID="Retry">
-      <input_port name="num_attempts" default="3">Number of retry attempts</input_port>
+    <Decorator ID="RetryUntilSuccessful">
+      <input_port name="num_attempts">Maximum number of attempts (-1 = infinite)</input_port>
     </Decorator>
-
   </TreeNodesModel>
 
 </root>

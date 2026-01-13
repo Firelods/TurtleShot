@@ -22,7 +22,10 @@ public:
   static BT::PortsList providedPorts()
   {
     return {
-      BT::InputPort<std::string>("target_type", "person", "Type of target to detect")
+      BT::InputPort<std::string>("target_type", "person", "Type of target to detect"),
+      BT::OutputPort<double>("target_x", "Detected X position in map frame"),
+      BT::OutputPort<double>("target_y", "Detected Y position in map frame"),
+      BT::OutputPort<double>("target_yaw", "Detected orientation in radians")
     };
   }
 
@@ -35,6 +38,9 @@ private:
   rclcpp::Subscription<vision_msgs::msg::Detection2DArray>::SharedPtr detection_sub_;
   bool target_detected_;
   std::string target_type_;
+  double detected_x_;
+  double detected_y_;
+  double detected_yaw_;
 };
 
 }  // namespace turtleshot_bt

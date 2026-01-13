@@ -19,6 +19,7 @@ def generate_launch_description():
     
     # We will use SLAM by default since we don't have a map
     slam = LaunchConfiguration('slam', default='True')
+    autostart = LaunchConfiguration('autostart', default='true')
 
     nav2_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -29,6 +30,8 @@ def generate_launch_description():
             'params_file': params_file,
             'slam': slam,
             'map': '', # No map provided, SLAM will generate it
+            'autostart': autostart,
+            'use_collision_monitor': 'False', 
         }.items()
     )
 
@@ -45,6 +48,10 @@ def generate_launch_description():
             'slam',
             default_value='True',
             description='Whether to run SLAM'),
+        DeclareLaunchArgument(
+            'autostart',
+            default_value='true',
+            description='Automatically startup Nav2 lifecycle nodes'),
 
         nav2_launch
     ])
