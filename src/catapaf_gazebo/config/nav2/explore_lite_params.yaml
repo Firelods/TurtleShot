@@ -1,0 +1,36 @@
+explore_node:
+  ros__parameters:
+    # Robot frame
+    robot_base_frame: base_footprint
+
+    # Costmap topic to use for frontier detection
+    costmap_topic: /global_costmap/costmap
+    costmap_updates_topic: /global_costmap/costmap_updates
+
+    # Visualization (set to true to see frontiers in RViz/Foxglove)
+    visualize: true
+
+    # Minimum size of frontier to consider (in meters)
+    # Smaller = more thorough exploration, larger = faster but may miss small areas
+    min_frontier_size: 0.5
+
+    # How often to search for new frontiers (Hz)
+    planner_frequency: 0.5
+
+    # Progress timeout - if no progress after this time, try a different frontier
+    progress_timeout: 30.0
+
+    # Potential scale - affects frontier selection priority
+    potential_scale: 3.0
+
+    # Orientation scale - prefer frontiers aligned with current heading
+    orientation_scale: 0.0
+
+    # Gain scale - prefer larger frontiers
+    gain_scale: 1.0
+
+    # Transform tolerance for TF lookups
+    transform_tolerance: 0.5
+
+    # Return to initial pose when exploration complete
+    return_to_init: false
