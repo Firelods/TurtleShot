@@ -32,13 +32,13 @@ def generate_launch_description():
     container_name = 'nav2_container'
 
     # Lifecycle nodes (without map_server and amcl - SLAM replaces them)
+    # Note: velocity_smoother removed - it interferes with cmd_vel without collision_monitor
     lifecycle_nodes = ['controller_server',
                        'smoother_server',
                        'planner_server',
                        'behavior_server',
                        'bt_navigator',
-                       'waypoint_follower',
-                       'velocity_smoother']
+                       'waypoint_follower']
 
     # SLAM Toolbox Node (replaces map_server + provides localization)
     slam_toolbox_node = Node(
@@ -104,11 +104,7 @@ def generate_launch_description():
                 plugin='nav2_waypoint_follower::WaypointFollower',
                 name='waypoint_follower',
                 parameters=[params_file]),
-            ComposableNode(
-                package='nav2_velocity_smoother',
-                plugin='nav2_velocity_smoother::VelocitySmoother',
-                name='velocity_smoother',
-                parameters=[params_file]),
+            # velocity_smoother removed - interferes with cmd_vel without collision_monitor
         ],
     )
 
