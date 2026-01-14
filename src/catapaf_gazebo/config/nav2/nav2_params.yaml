@@ -174,7 +174,12 @@ global_costmap:
       robot_radius: 0.22
       resolution: 0.05
       track_unknown_space: true
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      # Rolling window for SLAM mode (no static map initially)
+      rolling_window: true
+      width: 50
+      height: 50
+      # Use obstacle_layer and inflation only for SLAM mode
+      plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
@@ -189,9 +194,6 @@ global_costmap:
           raytrace_min_range: 0.1
           obstacle_max_range: 2.5
           obstacle_min_range: 0.1
-      static_layer:
-        plugin: "nav2_costmap_2d::StaticLayer"
-        map_subscribe_transient_local: True
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
