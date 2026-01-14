@@ -301,9 +301,10 @@ class OakYoloSegDriver(Node):
             m.data = out1.tolist()
             self.pub_o1.publish(m)
         
-        depth = self.q_depth.tryGet()
-        if self.enable_pointcloud and depth is not None and self.frame is not None:
-            self.publish_pointcloud(depth.getFrame(), self.frame)
+        if self.enable_pointcloud:
+            depth = self.q_depth.tryGet()
+            if depth is not None and self.frame is not None:
+                self.publish_pointcloud(depth.getFrame(), self.frame)
         
         if self.enable_segmented_image and out0 is not None and out1 is not None and self.frame is not None:
             try:
