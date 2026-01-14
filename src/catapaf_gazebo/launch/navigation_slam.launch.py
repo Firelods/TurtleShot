@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+"""
+Navigation with SLAM Launch File
+This launch file starts Nav2 with SLAM Toolbox to build a new map
+Use this when you want to explore and map a new environment
+"""
+
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -10,18 +17,22 @@ from launch_ros.descriptions import ComposableNode
 def generate_launch_description():
     pkg_catapaf_gazebo = get_package_share_directory('catapaf_gazebo')
 
-    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
+    # Default to false for real hardware
+    use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     autostart = LaunchConfiguration('autostart', default='true')
-    # Point to the existing map in TurtleShot directory by default
-    map_yaml_file = LaunchConfiguration('map', default=os.path.join('/mnt/c/Users/lefev/Documents/Polytech/SI5/', 'TurtleShot', 'my_costmap.yaml'))
+
+    # Nav2 parameters
     params_file = LaunchConfiguration('params_file',
                                       default=os.path.join(pkg_catapaf_gazebo, 'config', 'nav2', 'nav2_params.yaml'))
-    
+
+    # SLAM parameters (default to online async mode)
+    slam_params_file = LaunchConfiguration('slam_params_file',
+                                           default=os.path.join(pkg_catapaf_gazebo, 'config', 'nav2', 'slam_toolbox_params.yaml'))
+
     container_name = 'nav2_container'
 
-    lifecycle_nodes = ['map_server',
-                       'amcl',
-                       'controller_server',
+    # Lifecycle nodes (without map_server and amcl - SLAM replaces them)
+    lifecycle_nodes = ['controller_server',
                        'smoother_server',
                        'planner_server',
                        'behavior_server',
@@ -29,64 +40,17 @@ def generate_launch_description():
                        'waypoint_follower',
                        'velocity_smoother']
 
-    # Map Server Node
-    map_server_node = Node(
-        package='nav2_map_server',
-        executable='map_server',
-        name='map_server',
+    # SLAM Toolbox Node (replaces map_server + provides localization)
+    slam_toolbox_node = Node(
+        package='slam_toolbox',
+        executable='async_slam_toolbox_node',
+        name='slam_toolbox',
         output='screen',
-        parameters=[{'use_sim_time': use_sim_time},
-                    {'yaml_filename': map_yaml_file}])
-
-    # AMCL Node
-    amcl_node = Node(
-        package='nav2_amcl',
-        executable='amcl',
-        name='amcl',
-        output='screen',
-        parameters=[{'use_sim_time': use_sim_time},
-                    {'alpha1': 0.2},
-                    {'alpha2': 0.2},
-                    {'alpha3': 0.2},
-                    {'alpha4': 0.2},
-                    {'alpha5': 0.2},
-                    {'base_frame_id': 'base_footprint'},
-                    {'beam_skip_distance': 0.5},
-                    {'beam_skip_error_threshold': 0.9},
-                    {'beam_skip_threshold': 0.3},
-                    {'do_beamskip': False},
-                    {'global_frame_id': 'map'},
-                    {'lambda_short': 0.1},
-                    {'laser_likelihood_max_dist': 2.0},
-                    {'laser_max_range': 100.0},
-                    {'laser_min_range': -1.0},
-                    {'laser_model_type': 'likelihood_field'},
-                    {'max_beams': 60},
-                    {'max_particles': 2000},
-                    {'min_particles': 500},
-                    {'odom_frame_id': 'odom'},
-                    {'pf_err': 0.05},
-                    {'pf_z': 0.99},
-                    {'recovery_alpha_fast': 0.0},
-                    {'recovery_alpha_slow': 0.0},
-                    {'resample_interval': 1},
-                    {'robot_model_type': 'nav2_amcl::DifferentialMotionModel'},
-                    {'save_pose_rate': 0.5},
-                    {'sigma_hit': 0.2},
-                    {'tf_broadcast': True},
-                    {'transform_tolerance': 1.0},
-                    {'update_min_a': 0.2},
-                    {'update_min_d': 0.25},
-                    {'z_hit': 0.5},
-                    {'z_max': 0.05},
-                    {'z_rand': 0.5},
-                    {'z_rand': 0.5},
-                    {'z_short': 0.05},
-                    {'set_initial_pose': True},
-                    {'initial_pose_x': 0.5},
-                    {'initial_pose_y': 0.0},
-                    {'initial_pose_z': 0.01},
-                    {'initial_pose_yaw': 0.0}])
+        parameters=[
+            slam_params_file,
+            {'use_sim_time': use_sim_time}
+        ]
+    )
 
     # Lifecycle manager node
     lifecycle_manager_node = Node(
@@ -114,7 +78,7 @@ def generate_launch_description():
                 package='nav2_controller',
                 plugin='nav2_controller::ControllerServer',
                 name='controller_server',
-                parameters=[params_file]), # Removed remapping to allow sharing /cmd_vel
+                parameters=[params_file]),
             ComposableNode(
                 package='nav2_smoother',
                 plugin='nav2_smoother::SmootherServer',
@@ -150,29 +114,31 @@ def generate_launch_description():
 
     return LaunchDescription([
         SetEnvironmentVariable('RCUTILS_LOGGING_BUFFERED_STREAM', '1'),
-        
+
         DeclareLaunchArgument(
             'use_sim_time',
-            default_value='true',
+            default_value='false',
             description='Use simulation (Gazebo) clock if true'),
-        
+
         DeclareLaunchArgument(
             'autostart',
             default_value='true',
             description='Automatically startup the nav2 stack'),
-        
-        DeclareLaunchArgument(
-            'map',
-            default_value=os.path.join('/mnt/c/Users/lefev/Documents/Polytech/SI5/', 'TurtleShot', 'my_costmap.yaml'),
-            description='Full path to map yaml file to load'),
-        
+
         DeclareLaunchArgument(
             'params_file',
             default_value=os.path.join(pkg_catapaf_gazebo, 'config', 'nav2', 'nav2_params.yaml'),
-            description='Full path to the ROS2 parameters file to use'),
+            description='Full path to the ROS2 Nav2 parameters file to use'),
 
-        map_server_node,
-        amcl_node,
+        DeclareLaunchArgument(
+            'slam_params_file',
+            default_value=os.path.join(pkg_catapaf_gazebo, 'config', 'nav2', 'slam_toolbox_params.yaml'),
+            description='Full path to the SLAM Toolbox parameters file to use'),
+
+        # Launch SLAM instead of map_server
+        slam_toolbox_node,
+
+        # Launch Nav2 components
         nav2_container,
         load_composable_nodes,
         lifecycle_manager_node,

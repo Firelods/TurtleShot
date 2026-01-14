@@ -621,7 +621,7 @@ int main(int argc, char** argv)
     // For this demo, let's look in package share or hardcoded path (user provided)
     // The user's file is in src/catapaf_gazebo/behavior_trees/...
     // Ideally we install it. For now let's use the absolute path for dev speed.
-    std::string xml_path = "/home/bilbo/TurtleShot/src/catapaf_gazebo/behavior_trees/patrol_and_interact.xml";
+    std::string xml_path = "/mnt/c/Users/lefev/Documents/Polytech/SI5/TurtleShot/src/catapaf_gazebo/behavior_trees/patrol_and_interact.xml";
     
     // Check if file exists
     // (Omitted check for brevity)
