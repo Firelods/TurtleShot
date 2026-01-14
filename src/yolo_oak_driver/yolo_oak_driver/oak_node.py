@@ -18,11 +18,14 @@ class OakYoloSegDriver(Node):
         super().__init__("yolo_oak_driver")
         self.bridge = CvBridge()
 
-        # Paramètres ROS pour contrôler les publications
+        # Paramètres ROS pour contrôler les publications et performances
         self.declare_parameter("enable_pointcloud", False)
-        self.declare_parameter("enable_segmented_image", True)
+        self.declare_parameter("enable_segmented_image", False)
+        self.declare_parameter("publish_fps", 10.0)  # FPS de publication (pas de traitement inutile)
+
         self.enable_pointcloud = self.get_parameter("enable_pointcloud").value
         self.enable_segmented_image = self.get_parameter("enable_segmented_image").value
+        self.publish_fps = self.get_parameter("publish_fps").value
 
         pkg = get_package_share_directory("yolo_oak_driver")
         self.blob_path = os.path.join(pkg, "models", "model_V2.blob")
@@ -66,9 +69,9 @@ class OakYoloSegDriver(Node):
 
         self.frame = None
 
-        self.create_timer(1.0 / 30.0, self.tick)
+        self.create_timer(1.0 / self.publish_fps, self.tick)
         self.get_logger().info(
-            f"DepthAI pipeline started - pointcloud: {self.enable_pointcloud}, segmented_image: {self.enable_segmented_image}"
+            f"DepthAI pipeline started - fps: {self.publish_fps}, pointcloud: {self.enable_pointcloud}, segmented_image: {self.enable_segmented_image}"
         )
 
     def _build_pipeline(self):
@@ -78,7 +81,7 @@ class OakYoloSegDriver(Node):
         cam.setPreviewSize(self.input_w, self.input_h)
         cam.setInterleaved(False)
         cam.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)  # BGR car le blob a --reverse_input_channels
-        cam.setFps(30)
+        cam.setFps(self.publish_fps)  # Limiter les FPS à la source
 
         mono_left = p.create(dai.node.MonoCamera)
         mono_right = p.create(dai.node.MonoCamera)
