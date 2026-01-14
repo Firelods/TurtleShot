@@ -18,6 +18,12 @@ class OakYoloSegDriver(Node):
         super().__init__("yolo_oak_driver")
         self.bridge = CvBridge()
 
+        # Paramètres ROS pour contrôler les publications
+        self.declare_parameter("enable_pointcloud", False)
+        self.declare_parameter("enable_segmented_image", True)
+        self.enable_pointcloud = self.get_parameter("enable_pointcloud").value
+        self.enable_segmented_image = self.get_parameter("enable_segmented_image").value
+
         pkg = get_package_share_directory("yolo_oak_driver")
         self.blob_path = os.path.join(pkg, "models", "model_V2.blob")
         cfg_path = os.path.join(pkg, "helpers", "config.json")
@@ -61,7 +67,9 @@ class OakYoloSegDriver(Node):
         self.frame = None
 
         self.create_timer(1.0 / 30.0, self.tick)
-        self.get_logger().info("DepthAI pipeline started")
+        self.get_logger().info(
+            f"DepthAI pipeline started - pointcloud: {self.enable_pointcloud}, segmented_image: {self.enable_segmented_image}"
+        )
 
     def _build_pipeline(self):
         p = dai.Pipeline()
@@ -294,13 +302,13 @@ class OakYoloSegDriver(Node):
             self.pub_o1.publish(m)
         
         depth = self.q_depth.tryGet()
-        if depth is not None and self.frame is not None:
+        if self.enable_pointcloud and depth is not None and self.frame is not None:
             self.publish_pointcloud(depth.getFrame(), self.frame)
         
-        if out0 is not None and out1 is not None and self.frame is not None:
+        if self.enable_segmented_image and out0 is not None and out1 is not None and self.frame is not None:
             try:
                 detections = self.decode_detections(out0, out1, (self.input_h, self.input_w))
-                
+
                 if detections:
                     frame_seg = self.draw_segmentation(self.frame.copy(), detections)
                     seg_msg = self.bridge.cv2_to_imgmsg(frame_seg, encoding="bgr8")
@@ -309,7 +317,7 @@ class OakYoloSegDriver(Node):
                     self.pub_seg.publish(seg_msg)
                 else:
                     self.pub_seg.publish(self.bridge.cv2_to_imgmsg(self.frame, encoding="bgr8"))
-                    
+
             except Exception as e:
                 self.get_logger().error(f"Segmentation error: {e}", throttle_duration_sec=5.0)
 

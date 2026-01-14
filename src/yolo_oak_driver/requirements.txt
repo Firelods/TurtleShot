@@ -1,0 +1,7 @@
+# Core dependencies for yolo_oak_driver
+numpy<2.0.0
+opencv-python>=4.5.0,<5.0.0
+depthai>=2.22.0,<3.0.0
+
+# ROS2 Python bridge (usually installed via apt, but listed for reference)
+# cv-bridge is typically installed as ros-${ROS_DISTRO}-cv-bridge
