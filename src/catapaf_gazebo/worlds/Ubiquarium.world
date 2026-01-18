@@ -472,7 +472,7 @@
     </model>
 
     <model name='tom'>
-      <pose>4 1 0.9 0 0 0</pose>
+      <pose>5 1 0.9 0 0 0</pose>
       <static>1</static>
       <link name='link'>
         <collision name='collision'>

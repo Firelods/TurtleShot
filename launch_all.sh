@@ -47,7 +47,7 @@ ros2 launch catapaf_gazebo gz_simulation.launch.py &
 PID_GZ=$!
 
 echo "Waiting for Gazebo to start (60s)..."
-sleep 60
+sleep 30
 
 echo "Launching Navigation..."
 ros2 launch catapaf_gazebo navigation.launch.py &
@@ -55,7 +55,7 @@ PID_NAV=$!
 
 echo "Waiting for Nav2 to be ready..."
 if [ -f "./wait_for_nav2.sh" ]; then
-    ./wait_for_nav2.sh 120
+    ./wait_for_nav2.sh 60
     if [ $? -ne 0 ]; then
         echo "ERROR: Nav2 failed to start properly!"
         exit 1
@@ -66,12 +66,12 @@ else
 fi
 
 echo "Launching Auxiliary Nodes (AI, PWM)..."
-ros2 run video_to_ai video_inference_node &
+ros2 run video_to_ai video_inference_node --ros-args -p use_sim_time:=true &
 # Add distance_to_pwm only if a specific launch file or node is needed, usually part of sim launch but safe to keep noted
 # ros2 launch distance_to_pwm converter.launch.py & 
 
 echo "Launching Behavior Tree Executor..."
-ros2 run catapaf_bt bt_executor &
+ros2 run catapaf_bt bt_executor --ros-args -p use_sim_time:=true &
 PID_BT=$!
 
 echo "System Launched. Monitor via Groot2."

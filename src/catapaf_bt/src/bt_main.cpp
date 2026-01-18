@@ -15,6 +15,8 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "tf2/LinearMath/Quaternion.h"
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/transform_listener.h"
 
 using namespace BT;
 
@@ -25,8 +27,9 @@ class DetectObject : public StatefulActionNode
 {
 public:
     DetectObject(const std::string& name, const NodeConfig& config, 
-                 rclcpp::Node::SharedPtr node, std::string label)
-      : StatefulActionNode(name, config), node_(node), label_(label)
+                 rclcpp::Node::SharedPtr node, std::string label,
+                 std::shared_ptr<tf2_ros::Buffer> tf_buffer)
+      : StatefulActionNode(name, config), node_(node), label_(label), tf_buffer_(tf_buffer)
     {
         client_ = node_->create_client<catapaf_interfaces::srv::GetDetection>("get_detection");
     }
@@ -57,9 +60,9 @@ public:
 
     NodeStatus onRunning() override
     {
-        // Check for timeout (2 seconds)
+        // Check for timeout (3 seconds)
         auto elapsed = std::chrono::steady_clock::now() - start_time_;
-        if (elapsed > std::chrono::seconds(2)) {
+        if (elapsed > std::chrono::seconds(3)) {
             RCLCPP_WARN(node_->get_logger(), "Detection service timeout for label: %s", label_.c_str());
             setOutput("is_detected", false);
             return NodeStatus::FAILURE;
@@ -68,10 +71,102 @@ public:
         if (future_.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
             auto result = future_.get(); // result is SharedPtr to Response
             if (result->is_detected) {
-                setOutput("output_pose", result->pose);
-                setOutput("is_detected", true);
-                return NodeStatus::SUCCESS;
+                RCLCPP_INFO(node_->get_logger(), "[%s] Detection SUCCESS raw: x=%.2f, y=%.2f, z=%.2f frame=%s", 
+                            label_.c_str(), 
+                            result->pose.pose.position.x, 
+                            result->pose.pose.position.y, 
+                            result->pose.pose.position.z,
+                            result->pose.header.frame_id.c_str());
+                
+                // Transform to map frame
+                geometry_msgs::msg::PoseStamped pose_in_map;
+                try {
+                    // Force use of latest available transform
+                    result->pose.header.stamp = rclcpp::Time(0);
+
+                    // Check if transform is available
+                    if (!tf_buffer_->canTransform("map", result->pose.header.frame_id, tf2::TimePointZero, std::chrono::seconds(1))) {
+                         RCLCPP_ERROR(node_->get_logger(), "Transform to map not available");
+                         setOutput("is_detected", false);
+                         return NodeStatus::FAILURE;
+                    }
+                    
+                    tf_buffer_->transform(result->pose, pose_in_map, "map");
+
+                    RCLCPP_INFO(node_->get_logger(), "[%s] Transformed to map: x=%.2f, y=%.2f, z=%.2f",
+                        label_.c_str(),
+                        pose_in_map.pose.position.x,
+                        pose_in_map.pose.position.y,
+                        pose_in_map.pose.position.z);
+                    
+                    // Now calculate the goal point: 50cm short of the target
+                    // We need the robot's current position to know the vector
+                    geometry_msgs::msg::TransformStamped transform = 
+                        tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
+                    
+                    double robot_x = transform.transform.translation.x;
+                    double robot_y = transform.transform.translation.y;
+                    
+                    // Get Yaw from quaternion
+                    tf2::Quaternion q_robot(
+                        transform.transform.rotation.x,
+                        transform.transform.rotation.y,
+                        transform.transform.rotation.z,
+                        transform.transform.rotation.w);
+                    tf2::Matrix3x3 m(q_robot);
+                    double roll, pitch, robot_yaw;
+                    m.getRPY(roll, pitch, robot_yaw);
+
+                    RCLCPP_INFO(node_->get_logger(), "Robot Pose in Map: x=%.2f, y=%.2f, yaw=%.2f", robot_x, robot_y, robot_yaw);
+                    
+                    double target_x = pose_in_map.pose.position.x;
+                    double target_y = pose_in_map.pose.position.y;
+                    
+                    double dx = target_x - robot_x;
+                    double dy = target_y - robot_y;
+                    double dist = std::sqrt(dx*dx + dy*dy);
+                    
+                    RCLCPP_INFO(node_->get_logger(), "Vector to Object: dx=%.2f, dy=%.2f, dist=%.2f", dx, dy, dist);
+
+                    // Increase safe distance to 1.0m to avoid potential costmap conflicts
+                    if (dist > 1.0) {
+                        // Move target towards robot by 1.0m
+                        double move_ratio = (dist - 1.0) / dist;
+                        pose_in_map.pose.position.x = robot_x + dx * move_ratio;
+                        pose_in_map.pose.position.y = robot_y + dy * move_ratio;
+                    } else {
+                        // Already within 1.0m, stay put (use current robot pose)
+                        pose_in_map.pose.position.x = robot_x;
+                        pose_in_map.pose.position.y = robot_y;
+                        RCLCPP_WARN(node_->get_logger(), "Object too close (%.2fm), staying put.", dist);
+                    }
+                    
+                    RCLCPP_INFO(node_->get_logger(), "Final Goal: x=%.2f, y=%.2f", pose_in_map.pose.position.x, pose_in_map.pose.position.y);
+
+                    pose_in_map.pose.position.z = 0.0;
+                    
+                    // Orientation: Face the object
+                    // Calculate yaw from robot to ORIGINAL target
+                    // Wait, we want to face the object (target_x, target_y)
+                    double yaw = std::atan2(target_y - robot_y, target_x - robot_x);
+                    tf2::Quaternion q;
+                    q.setRPY(0, 0, yaw);
+                    pose_in_map.pose.orientation = tf2::toMsg(q);
+
+                    setOutput("output_pose", pose_in_map);
+                    setOutput("is_detected", true);
+                    return NodeStatus::SUCCESS;
+
+                } catch (const tf2::TransformException & ex) {
+                    RCLCPP_ERROR(node_->get_logger(), "TF Exception: %s", ex.what());
+                    setOutput("is_detected", false);
+                    return NodeStatus::FAILURE;
+                }
+
             } else {
+                // Throttle failure logs to avoid spamming (every 2 seconds)
+                RCLCPP_INFO_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000, 
+                                     "[%s] Detection FAILED: Object not found by service.", label_.c_str());
                 setOutput("is_detected", false);
                 return NodeStatus::FAILURE;
             }
@@ -89,6 +184,7 @@ private:
     std::string label_;
     rclcpp::Client<catapaf_interfaces::srv::GetDetection>::SharedFuture future_;
     std::chrono::steady_clock::time_point start_time_;
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
 };
 
 
@@ -466,18 +562,23 @@ private:
 };
 
 // ----------------------------------------------------------------------------
-// Simple GoToPose utilizing Nav2
+// Simple GoToPose utilizing direct cmd_vel (Visual Servoing / P-Controller)
+// This replaces Nav2 to ensure forward motion and simple behavior.
 // ----------------------------------------------------------------------------
 class GoToPose : public StatefulActionNode
 {
 public:
-    using NavigateToPose = nav2_msgs::action::NavigateToPose;
-    using GoalHandleNav = rclcpp_action::Client<NavigateToPose>::GoalHandle;
-
     GoToPose(const std::string& name, const NodeConfig& config, rclcpp::Node::SharedPtr node)
       : StatefulActionNode(name, config), node_(node)
     {
-        action_client_ = rclcpp_action::create_client<NavigateToPose>(node_, "navigate_to_pose");
+        vel_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
+        tf_buffer_ = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+        
+        // Safety scan subscription
+        scan_sub_ = node_->create_subscription<sensor_msgs::msg::LaserScan>(
+            "scan", rclcpp::SensorDataQoS(),
+            std::bind(&GoToPose::scan_callback, this, std::placeholders::_1));
     }
 
     static PortsList providedPorts()
@@ -487,49 +588,141 @@ public:
 
     NodeStatus onStart() override
     {
-        geometry_msgs::msg::PoseStamped target;
-        if (!getInput("target", target)) {
+        if (!getInput("target", target_pose_)) {
             RCLCPP_ERROR(node_->get_logger(), "GoToPose missing target input");
             return NodeStatus::FAILURE;
         }
-
-        if (!action_client_->wait_for_action_server(std::chrono::seconds(10))) {
-            RCLCPP_ERROR(node_->get_logger(), "Nav2 Action Server not available");
-            return NodeStatus::FAILURE;
-        }
-
-        auto goal_msg = NavigateToPose::Goal();
-        goal_msg.pose = target;
         
-        auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
-        send_goal_options.result_callback = std::bind(&GoToPose::result_callback, this, std::placeholders::_1);
-        
-        action_client_->async_send_goal(goal_msg, send_goal_options);
-        done_ = false;
-        
+        RCLCPP_INFO(node_->get_logger(), "GoToPose started. Target: (%.2f, %.2f)", 
+            target_pose_.pose.position.x, target_pose_.pose.position.y);
+            
         return NodeStatus::RUNNING;
     }
 
     NodeStatus onRunning() override
     {
-        if (done_) {
-             return success_ ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
+        // 1. Get current robot pose
+        geometry_msgs::msg::TransformStamped transform;
+        try {
+            transform = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
+        } catch (const tf2::TransformException & ex) {
+            RCLCPP_WARN(node_->get_logger(), "Waiting for TF map->base_link: %s", ex.what());
+            return NodeStatus::RUNNING;
         }
+
+        double robot_x = transform.transform.translation.x;
+        double robot_y = transform.transform.translation.y;
+        
+        // Get Robot Yaw
+        tf2::Quaternion q(
+            transform.transform.rotation.x,
+            transform.transform.rotation.y,
+            transform.transform.rotation.z,
+            transform.transform.rotation.w);
+        tf2::Matrix3x3 m(q);
+        double roll, pitch, robot_yaw;
+        m.getRPY(roll, pitch, robot_yaw);
+
+        // 2. Calculate error
+        double dx = target_pose_.pose.position.x - robot_x;
+        double dy = target_pose_.pose.position.y - robot_y;
+        double dist = std::sqrt(dx*dx + dy*dy);
+        double target_yaw = std::atan2(dy, dx);
+        double angle_diff = target_yaw - robot_yaw;
+
+        // Normalize angle to [-PI, PI]
+        while (angle_diff > M_PI) angle_diff -= 2.0 * M_PI;
+        while (angle_diff < -M_PI) angle_diff += 2.0 * M_PI;
+
+        // 3. Check for completion (0.1m tolerance)
+        if (dist < 0.1) {
+            stopRobot();
+            RCLCPP_INFO(node_->get_logger(), "Target reached!");
+            return NodeStatus::SUCCESS;
+        }
+
+        // 4. Safety Check (Frontal collision)
+        if (isPathBlocked()) {
+            stopRobot();
+            RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000, "Path blocked by obstacle! Waiting...");
+            return NodeStatus::RUNNING; // Keep trying, or return FAILURE?
+        }
+
+        // 5. Compute Control (Simple P-Controller)
+        geometry_msgs::msg::Twist cmd;
+        
+        // Turn first if angle is large (> 30 deg)
+        if (std::abs(angle_diff) > 0.5) {
+            cmd.linear.x = 0.0;
+            cmd.angular.z = (angle_diff > 0 ? 1.0 : -1.0) * 0.5; // Rotate 0.5 rad/s
+        } else {
+            // Drive and correct angle
+            cmd.linear.x = std::min(0.3, dist); // Max 0.3 m/s, slow down near target
+            cmd.angular.z = angle_diff * 1.5;   // P-gain for angle
+        }
+
+        vel_pub_->publish(cmd);
         return NodeStatus::RUNNING;
     }
 
-    void onHalted() override {}
-
-    void result_callback(const GoalHandleNav::WrappedResult & result) {
-        done_ = true;
-        success_ = (result.code == rclcpp_action::ResultCode::SUCCEEDED);
+    void onHalted() override {
+        stopRobot();
     }
 
 private:
+    void stopRobot() {
+        geometry_msgs::msg::Twist cmd;
+        cmd.linear.x = 0.0;
+        cmd.angular.z = 0.0;
+        vel_pub_->publish(cmd);
+    }
+    
+    void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
+        latest_scan_ = msg;
+    }
+    
+    bool isPathBlocked() {
+        if (!latest_scan_) return false;
+        
+        // Check front cone (-20 to +20 degrees)
+        // Adjust indices based on angle_min/increment
+        // Simplified: iterate ranges
+        // Assuming Standard scan (-PI to PI or similar)
+        
+        // Find indices for -20 deg to +20 deg
+        // If 0 is front.
+        
+        float min_dist = 100.0;
+        
+        // Simple iteration over center of array (assuming 0 is index 0 or center?)
+        // Safer: Convert angles.
+        float angle_min = latest_scan_->angle_min;
+        float angle_inc = latest_scan_->angle_increment;
+        
+        for (size_t i = 0; i < latest_scan_->ranges.size(); ++i) {
+            float angle = angle_min + i * angle_inc;
+            // Normalize angle
+            while (angle > M_PI) angle -= 2*M_PI;
+            while (angle < -M_PI) angle += 2*M_PI;
+            
+            if (std::abs(angle) < 0.35) { // ~20 degrees
+                float r = latest_scan_->ranges[i];
+                if (r > latest_scan_->range_min && r < 0.4) { // Blocked if < 40cm
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     rclcpp::Node::SharedPtr node_;
-    rclcpp_action::Client<NavigateToPose>::SharedPtr action_client_;
-    bool done_ = false;
-    bool success_ = false;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr vel_pub_;
+    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    
+    geometry_msgs::msg::PoseStamped target_pose_;
+    sensor_msgs::msg::LaserScan::SharedPtr latest_scan_;
 };
 
 // ----------------------------------------------------------------------------
@@ -572,12 +765,45 @@ private:
 
 
 // ----------------------------------------------------------------------------
+// Stop Robot Action
+// ----------------------------------------------------------------------------
+class StopRobot : public SyncActionNode
+{
+public:
+    StopRobot(const std::string& name, const NodeConfig& config, rclcpp::Node::SharedPtr node)
+      : SyncActionNode(name, config), node_(node)
+    {
+        vel_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
+    }
+
+    static PortsList providedPorts() { return {}; }
+
+    NodeStatus tick() override
+    {
+        geometry_msgs::msg::Twist msg;
+        msg.linear.x = 0.0;
+        msg.angular.z = 0.0;
+        vel_pub_->publish(msg);
+        return NodeStatus::SUCCESS;
+    }
+
+private:
+    rclcpp::Node::SharedPtr node_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr vel_pub_;
+};
+
+
+// ----------------------------------------------------------------------------
 // MAIN
 // ----------------------------------------------------------------------------
 int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
     auto node = rclcpp::Node::make_shared("catapaf_bt_executor");
+
+    // Initialize TF buffer and listener
+    auto tf_buffer = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+    auto tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
     BehaviorTreeFactory factory;
 
@@ -586,14 +812,14 @@ int main(int argc, char** argv)
 
     // Register ROS-dependent nodes by lambda or explicit builder
     factory.registerBuilder<DetectObject>("DetectTrashCan", 
-        [node](const std::string& name, const NodeConfig& config) {
-            return std::make_unique<DetectObject>(name, config, node, "trashcan"); 
+        [node, tf_buffer](const std::string& name, const NodeConfig& config) {
+            return std::make_unique<DetectObject>(name, config, node, "trashcan", tf_buffer); 
         });
 
     factory.registerBuilder<DetectObject>("DetectHumanWithBall", 
-        [node](const std::string& name, const NodeConfig& config) {
+        [node, tf_buffer](const std::string& name, const NodeConfig& config) {
             // Label matching what the YOLO node returns.
-            return std::make_unique<DetectObject>(name, config, node, "person"); 
+            return std::make_unique<DetectObject>(name, config, node, "human", tf_buffer); 
         });
 
     factory.registerBuilder<GoToPose>("GoToPose", 
@@ -601,7 +827,12 @@ int main(int argc, char** argv)
             return std::make_unique<GoToPose>(name, config, node); 
         });
 
-    factory.registerBuilder<RandomWalk>("RandomWalk", 
+    factory.registerBuilder<StopRobot>("StopRobot", 
+        [node](const std::string& name, const NodeConfig& config) {
+            return std::make_unique<StopRobot>(name, config, node); 
+        });
+
+    factory.registerBuilder<RandomWalk>("RandomWalk",  
         [node](const std::string& name, const NodeConfig& config) {
             return std::make_unique<RandomWalk>(name, config, node); 
         });

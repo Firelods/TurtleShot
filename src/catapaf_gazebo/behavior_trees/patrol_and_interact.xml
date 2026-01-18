@@ -1,59 +1,24 @@
 <root BTCPP_format="4">
     <BehaviorTree ID="MainTree">
-        <Parallel>
-            <!-- Background Task: Monitor for Trashcans and Human, update blackboard -->
-            <KeepRunningUntilFailure>
-                <Sequence>
-                    <!-- Trashcan Detection -->
-                    <Fallback>
-                        <Sequence>
-                            <DetectTrashCan output_pose="{trashcan_pose}"/>
-                            <SetBlackboard output_key="trashcan_location" value="{trashcan_pose}"/>
-                        </Sequence>
-                        <AlwaysSuccess/>
-                    </Fallback>
-                    
-                    <!-- Human Detection -->
-                    <Fallback>
-                        <Sequence>
-                           <DetectHumanWithBall output_pose="{human_pose}" is_detected="{human_found}"/>
-                        </Sequence>
-                        <AlwaysSuccess/>
-                    </Fallback>
-                </Sequence>
-            </KeepRunningUntilFailure>
+        <Sequence>
+             <RetryUntilSuccessful num_attempts="-1">
+                <DetectHumanWithBall output_pose="{human_pose}" is_detected="{human_found}"/>
+             </RetryUntilSuccessful>
+             
+             <StopRobot/>
+             <Wait duration="2"/>
 
-            <!-- Main Behavior Logic -->
-            <ReactiveFallback>
-                <!-- Priority 1: Handle Human with Ball Interaction -->
-                <Sequence>
-                    <!-- Condition: Check if human with ball is detected (set by background) -->
-                    <ScriptCondition code="human_found==true"/>
-                    
-                    <!-- Action: Go to the human -->
-                    <GoToPose target="{human_pose}"/>
-                    
-                    <!-- Action: Wait for 30 seconds -->
-                    <Wait duration="30"/>
-                    
-                    <!-- Action: Go to the previously detected trashcan -->
-                    <GoToPose target="{trashcan_location}"/>
-                    
-                    <!-- Action: Trigger the robot arm -->
-                    <TriggerArm/>
-                </Sequence>
-
-
-                <!-- Priority 2: Random Walk to find human/dustbin -->
-                <RandomWalk/>
-            </ReactiveFallback>
-        </Parallel>
+             <GoToPose target="{human_pose}"/>
+             
+             <Wait duration="30"/>
+        </Sequence>
     </BehaviorTree>
 
     <!-- Definition of custom nodes for Groot2 visualization -->
     <TreeNodesModel>
         <Action ID="DetectTrashCan">
             <output_port name="output_pose">Pose of the detected trashcan</output_port>
+            <output_port name="is_detected">Boolean flag if detected</output_port>
         </Action>
         <Action ID="DetectHumanWithBall">
             <output_port name="output_pose">Pose of the human with ball</output_port>
@@ -62,10 +27,10 @@
         <Action ID="GoToPose">
             <input_port name="target">Target 3D Pose</input_port>
         </Action>
+        <Action ID="StopRobot"/>
         <Action ID="Wait">
             <input_port name="duration">Duration in seconds</input_port>
         </Action>
-        <Action ID="TriggerArm"/>
         <Action ID="GetPatrolPoint">
             <output_port name="output_pose">Next patrol waypoint pose</output_port>
         </Action>

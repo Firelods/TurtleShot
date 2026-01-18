@@ -77,6 +77,8 @@ class VideoInferenceNode(Node):
             self.handle_get_detection
         )
 
+        self.last_cloud_publish_time = self.get_clock().now()
+    
     def handle_get_detection(self, request, response):
         target_label = request.label.lower()
         self.get_logger().info(f"Requête de détection pour : {target_label}")
@@ -86,7 +88,10 @@ class VideoInferenceNode(Node):
 
         for det in self.latest_detections:
             # Check similarity or exact match
-            if target_label in det['label'].lower():
+            # "human" in "human" -> True
+            # "person" in "human" -> False (unless aliased)
+            lbl = det['label'].lower()
+            if target_label in lbl or lbl in target_label:
                 if det['score'] > max_score:
                     max_score = det['score']
                     best_detection = det
@@ -114,7 +119,8 @@ class VideoInferenceNode(Node):
             self.get_logger().info(f"Trouvé {target_label} à ({response.pose.pose.position.x:.2f}, {response.pose.pose.position.y:.2f}, {response.pose.pose.position.z:.2f})")
         else:
             response.is_detected = False
-            self.get_logger().info(f"Objet {target_label} NON trouvé.")
+            available_labels = [d['label'] for d in self.latest_detections]
+            self.get_logger().info(f"Objet {target_label} NON trouvé. Disponibles: {available_labels}")
 
         return response
 
@@ -211,8 +217,11 @@ class VideoInferenceNode(Node):
                     "position_3d": pos_3d
                 })
 
-        if cloud_msg is not None:
-            self.publish_colored_cloud(cloud_msg, segmentation_mask, h, w)
+        # Point cloud coloration removed for performance
+        # if cloud_msg is not None:
+        #    if (now - self.last_cloud_publish_time).nanoseconds > 2e9: # 2 seconds
+        #        self.publish_colored_cloud(cloud_msg, segmentation_mask, h, w)
+        #        self.last_cloud_publish_time = now
         
         overlay = cv2.addWeighted(frame, 0.6, color_mask, 0.4, 0)
 
@@ -252,8 +261,15 @@ class VideoInferenceNode(Node):
                     continue
             
             if len(points_3d) > 0:
-                median = np.median(np.array(points_3d), axis=0)
-                return {"x": float(median[0]), "y": float(median[1]), "z": float(median[2])}
+                points_np = np.array(points_3d)
+                # Use median for X and Y (centering)
+                x_med = np.median(points_np[:, 0])
+                y_med = np.median(points_np[:, 1])
+                # Use 10th percentile for Z (depth) to find the front surface
+                # Z is forward in optical frame
+                z_close = np.percentile(points_np[:, 2], 10) 
+                
+                return {"x": float(x_med), "y": float(y_med), "z": float(z_close)}
         except:
             pass
         
