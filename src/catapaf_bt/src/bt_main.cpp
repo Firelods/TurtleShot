@@ -29,7 +29,8 @@ public:
     DetectObject(const std::string& name, const NodeConfig& config, 
                  rclcpp::Node::SharedPtr node, std::string label,
                  std::shared_ptr<tf2_ros::Buffer> tf_buffer)
-      : StatefulActionNode(name, config), node_(node), label_(label), tf_buffer_(tf_buffer)
+      : StatefulActionNode(name, config), node_(node), label_(label), tf_buffer_(tf_buffer),
+        last_attempt_time_(std::chrono::steady_clock::time_point::min())
     {
         client_ = node_->create_client<catapaf_interfaces::srv::GetDetection>("get_detection");
     }
@@ -42,6 +43,23 @@ public:
 
     NodeStatus onStart() override
     {
+        // Check throttle - minimum 2 seconds between attempts
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_attempt_time_).count();
+        
+        if (elapsed < 2000) {  // Less than 2 seconds since last attempt
+            // Set flag to indicate we're in throttle wait mode
+            waiting_for_throttle_ = true;
+            throttle_start_time_ = now;
+            setOutput("is_detected", false);
+            RCLCPP_INFO_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000, 
+                "[%s] Throttling detection (waiting %.1fs)", label_.c_str(), (2000 - elapsed) / 1000.0);
+            return NodeStatus::RUNNING;
+        }
+        
+        waiting_for_throttle_ = false;
+        last_attempt_time_ = now;
+        
         if (!client_->wait_for_service(std::chrono::seconds(1))) {
             RCLCPP_WARN(node_->get_logger(), "GetDetection service not available");
             setOutput("is_detected", false);
@@ -55,11 +73,46 @@ public:
         future_ = client_->async_send_request(request).share();
         start_time_ = std::chrono::steady_clock::now();
         
+        RCLCPP_INFO(node_->get_logger(), "[%s] Detection request sent", label_.c_str());
         return NodeStatus::RUNNING;
     }
 
     NodeStatus onRunning() override
     {
+        // If we're waiting for throttle period to expire
+        if (waiting_for_throttle_) {
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - throttle_start_time_).count();
+            
+            if (elapsed < 2000) {
+                // Still waiting, return RUNNING (this gives RandomWalk time to execute)
+                return NodeStatus::RUNNING;
+            } else {
+                // Throttle period expired, restart the node to make a new attempt
+                // We do this by halting and letting the tree restart us
+                waiting_for_throttle_ = false;
+                // Don't return FAILURE - that would make RetryUntilSuccessful retry immediately
+                // Instead, we need to signal that we should restart
+                // Actually, let's just proceed to make the detection call now
+                last_attempt_time_ = now;
+                
+                if (!client_->wait_for_service(std::chrono::seconds(1))) {
+                    RCLCPP_WARN(node_->get_logger(), "GetDetection service not available");
+                    setOutput("is_detected", false);
+                    return NodeStatus::FAILURE;
+                }
+
+                auto request = std::make_shared<catapaf_interfaces::srv::GetDetection::Request>();
+                request->label = label_;
+
+                future_ = client_->async_send_request(request).share();
+                start_time_ = std::chrono::steady_clock::now();
+                
+                RCLCPP_INFO(node_->get_logger(), "[%s] Detection request sent (after throttle)", label_.c_str());
+                // Continue to normal detection flow below
+            }
+        }
+        
         // Check for timeout (3 seconds)
         auto elapsed = std::chrono::steady_clock::now() - start_time_;
         if (elapsed > std::chrono::seconds(3)) {
@@ -185,6 +238,9 @@ private:
     rclcpp::Client<catapaf_interfaces::srv::GetDetection>::SharedFuture future_;
     std::chrono::steady_clock::time_point start_time_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::chrono::steady_clock::time_point last_attempt_time_;  // For throttling
+    bool waiting_for_throttle_ = false;  // Flag for throttle wait state
+    std::chrono::steady_clock::time_point throttle_start_time_;  // When throttle wait started
 };
 
 
@@ -794,6 +850,102 @@ private:
 
 
 // ----------------------------------------------------------------------------
+// Step Back Action - Moves robot backward by specified distance
+// ----------------------------------------------------------------------------
+class StepBack : public StatefulActionNode
+{
+public:
+    StepBack(const std::string& name, const NodeConfig& config, rclcpp::Node::SharedPtr node)
+      : StatefulActionNode(name, config), node_(node)
+    {
+        vel_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
+        tf_buffer_ = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    }
+
+    static PortsList providedPorts()
+    {
+        return { InputPort<double>("distance", 0.5, "Distance to step back in meters") };
+    }
+
+    NodeStatus onStart() override
+    {
+        double distance = 0.5;
+        getInput("distance", distance);
+        target_distance_ = distance;
+        
+        // Get initial position
+        try {
+            auto transform = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
+            start_x_ = transform.transform.translation.x;
+            start_y_ = transform.transform.translation.y;
+            
+            RCLCPP_INFO(node_->get_logger(), "StepBack started. Target distance: %.2f m", target_distance_);
+            return NodeStatus::RUNNING;
+        } catch (const tf2::TransformException & ex) {
+            RCLCPP_WARN(node_->get_logger(), "Waiting for TF map->base_link: %s", ex.what());
+            return NodeStatus::RUNNING;
+        }
+    }
+
+    NodeStatus onRunning() override
+    {
+        // Get current position
+        try {
+            auto transform = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
+            double current_x = transform.transform.translation.x;
+            double current_y = transform.transform.translation.y;
+            
+            // Calculate distance traveled
+            double dx = current_x - start_x_;
+            double dy = current_y - start_y_;
+            double distance_traveled = std::sqrt(dx*dx + dy*dy);
+            
+            // Check if we've traveled the target distance
+            if (distance_traveled >= target_distance_) {
+                stopRobot();
+                RCLCPP_INFO(node_->get_logger(), "StepBack completed. Distance: %.2f m", distance_traveled);
+                return NodeStatus::SUCCESS;
+            }
+            
+            // Move backward
+            geometry_msgs::msg::Twist cmd;
+            cmd.linear.x = -0.2;  // Move backward at 0.2 m/s
+            cmd.angular.z = 0.0;
+            vel_pub_->publish(cmd);
+            
+            return NodeStatus::RUNNING;
+            
+        } catch (const tf2::TransformException & ex) {
+            RCLCPP_WARN(node_->get_logger(), "TF Exception during StepBack: %s", ex.what());
+            return NodeStatus::RUNNING;
+        }
+    }
+
+    void onHalted() override {
+        stopRobot();
+    }
+
+private:
+    void stopRobot() {
+        geometry_msgs::msg::Twist cmd;
+        cmd.linear.x = 0.0;
+        cmd.angular.z = 0.0;
+        vel_pub_->publish(cmd);
+    }
+
+    rclcpp::Node::SharedPtr node_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr vel_pub_;
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    
+    double target_distance_;
+    double start_x_;
+    double start_y_;
+};
+
+
+// ----------------------------------------------------------------------------
 // MAIN
 // ----------------------------------------------------------------------------
 int main(int argc, char** argv)
@@ -845,6 +997,11 @@ int main(int argc, char** argv)
     factory.registerBuilder<GetPatrolPoint>("GetPatrolPoint", 
         [node](const std::string& name, const NodeConfig& config) {
             return std::make_unique<GetPatrolPoint>(name, config, node); 
+        });
+
+    factory.registerBuilder<StepBack>("StepBack", 
+        [node](const std::string& name, const NodeConfig& config) {
+            return std::make_unique<StepBack>(name, config, node); 
         });
 
     // Load XML

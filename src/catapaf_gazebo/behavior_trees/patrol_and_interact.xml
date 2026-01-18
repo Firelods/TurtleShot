@@ -1,16 +1,37 @@
 <root BTCPP_format="4">
     <BehaviorTree ID="MainTree">
         <Sequence>
-             <RetryUntilSuccessful num_attempts="-1">
-                <DetectHumanWithBall output_pose="{human_pose}" is_detected="{human_found}"/>
-             </RetryUntilSuccessful>
+             <!-- Step 1: Detect and go to human -->
+             <DetectHumanWithBall output_pose="{human_pose}" is_detected="{human_found}"/>
              
-             <StopRobot/>
-             <Wait duration="2"/>
-
              <GoToPose target="{human_pose}"/>
              
+             <!-- Step 2: Stop -->
+             <StopRobot/>
+             
+             <!-- Step 3: Wait 30 seconds -->
              <Wait duration="30"/>
+             
+             <!-- Step 4: Step back -->
+             <StepBack distance="0.5"/>
+             
+             <!-- Step 5 & 6: Random walk while searching for trash -->
+             <!-- Parallel node runs both RandomWalk and trash detection simultaneously -->
+             <!-- SuccessOnOne: If trash is detected (Retry succeeds), Parallel succeeds and halts RandomWalk -->
+             <Parallel success_count="1" failure_count="1">
+                 <RetryUntilSuccessful num_attempts="-1">
+                     <DetectTrashCan output_pose="{trash_pose}" is_detected="{trash_found}"/>
+                 </RetryUntilSuccessful>
+                 <RandomWalk/>
+             </Parallel>
+             
+             <StopRobot/>
+             
+             <!-- Step 7: Go to trash -->
+             <GoToPose target="{trash_pose}"/>
+             
+             <!-- Step 8: Trigger arm -->
+             <TriggerArm/>
         </Sequence>
     </BehaviorTree>
 
@@ -35,5 +56,9 @@
             <output_port name="output_pose">Next patrol waypoint pose</output_port>
         </Action>
         <Action ID="RandomWalk"/>
+        <Action ID="StepBack">
+            <input_port name="distance">Distance to step back in meters</input_port>
+        </Action>
+        <Action ID="TriggerArm"/>
     </TreeNodesModel>
 </root>

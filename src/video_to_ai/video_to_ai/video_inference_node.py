@@ -125,6 +125,7 @@ class VideoInferenceNode(Node):
         return response
 
     def image_callback(self, msg: Image):
+        self.get_logger().info("Image reçue, lancement de l'inférence...", throttle_duration_sec=5.0)
         try:
             frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         except Exception as e:
@@ -155,7 +156,7 @@ class VideoInferenceNode(Node):
 
     def pointcloud_callback(self, msg: PointCloud2):
         self.latest_cloud = msg
-        self.get_logger().info(f"Nuage reçu: {msg.width}x{msg.height} points", throttle_duration_sec=5.0)
+        self.get_logger().info(f"Nuage reçu: {msg.width}x{msg.height} points", throttle_duration_sec=30.0)
 
     def run_inference(self, frame, cloud_msg):
         results = self.model(frame, verbose=False)[0]
