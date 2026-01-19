@@ -82,7 +82,7 @@ class VideoInferenceNode(Node):
     def handle_get_detection(self, request, response):
         target_label = request.label.lower()
         self.get_logger().info(f"Requête de détection pour : {target_label}")
-        
+
         best_detection = None
         max_score = -1.0
 
@@ -95,28 +95,36 @@ class VideoInferenceNode(Node):
                 if det['score'] > max_score:
                     max_score = det['score']
                     best_detection = det
-        
-        if best_detection and best_detection['position_3d']['x'] is not None:
-            response.is_detected = True
-            
-            # Fill PoseStamped
-            # Note: The coordinates are camera optical frame usually. 
-            # Ideally we should transform to map or base_link, but for now sending as is (or camera frame)
-            # The cloud callback usually gives points in the camera optical frame.
-            
-            response.pose = PoseStamped()
-            response.pose.header.frame_id = "camera_link_optical" # Assumption, might be depth_camera_link
-            if self.latest_cloud:
-                response.pose.header.frame_id = self.latest_cloud.header.frame_id
-                
-            response.pose.header.stamp = self.get_clock().now().to_msg()
-            
-            response.pose.pose.position.x = best_detection['position_3d']['x']
-            response.pose.pose.position.y = best_detection['position_3d']['y']
-            response.pose.pose.position.z = best_detection['position_3d']['z']
-            response.pose.pose.orientation.w = 1.0
-            
-            self.get_logger().info(f"Trouvé {target_label} à ({response.pose.pose.position.x:.2f}, {response.pose.pose.position.y:.2f}, {response.pose.pose.position.z:.2f})")
+
+        if best_detection:
+            # Log detection with 3D position status
+            pos_3d = best_detection['position_3d']
+            self.get_logger().info(f"Détection 2D trouvée: {best_detection['label']}, score={best_detection['score']:.2f}, 3D: x={pos_3d['x']}, y={pos_3d['y']}, z={pos_3d['z']}")
+
+            if pos_3d['x'] is not None:
+                response.is_detected = True
+
+                # Fill PoseStamped
+                # Note: The coordinates are camera optical frame usually.
+                # Ideally we should transform to map or base_link, but for now sending as is (or camera frame)
+                # The cloud callback usually gives points in the camera optical frame.
+
+                response.pose = PoseStamped()
+                response.pose.header.frame_id = "camera_link_optical" # Assumption, might be depth_camera_link
+                if self.latest_cloud:
+                    response.pose.header.frame_id = self.latest_cloud.header.frame_id
+
+                response.pose.header.stamp = self.get_clock().now().to_msg()
+
+                response.pose.pose.position.x = pos_3d['x']
+                response.pose.pose.position.y = pos_3d['y']
+                response.pose.pose.position.z = pos_3d['z']
+                response.pose.pose.orientation.w = 1.0
+
+                self.get_logger().info(f"Trouvé {target_label} à ({response.pose.pose.position.x:.2f}, {response.pose.pose.position.y:.2f}, {response.pose.pose.position.z:.2f})")
+            else:
+                response.is_detected = False
+                self.get_logger().warn(f"Objet {target_label} détecté en 2D mais position 3D invalide (depth data manquant)")
         else:
             response.is_detected = False
             available_labels = [d['label'] for d in self.latest_detections]
