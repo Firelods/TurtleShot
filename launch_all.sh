@@ -11,7 +11,7 @@ pkill -f autonomous_explorer
 pkill -f arm_controller
 
 echo "Building packages..."
-colcon build --packages-select catapaf_interfaces catapaf_description catapaf_gazebo catapaf_bt distance_to_pwm video_to_ai
+colcon build --packages-select catapaf_interfaces catapaf_gazebo catapaf_bt distance_to_pwm video_to_ai
 
 echo "Sourcing environment..."
 source install/setup.bash
