@@ -5,6 +5,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdlib>
+#include <atomic>
 
 #include "catapaf_interfaces/srv/get_detection.hpp"
 #include "catapaf_interfaces/srv/get_random_goal.hpp"
@@ -15,6 +16,8 @@
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
+#include "rclcpp_action/rclcpp_action.hpp"
+#include "nav2_msgs/action/navigate_to_pose.hpp"
 
 using namespace BT;
 
@@ -624,20 +627,21 @@ private:
 };
 
 // ----------------------------------------------------------------------------
-// GoToPose utilizing direct cmd_vel control (no Nav2)
-// Uses proportional controller to navigate to target pose
+// GoToPose using Nav2 NavigateToPose action for accurate navigation
 // ----------------------------------------------------------------------------
 class GoToPose : public StatefulActionNode
 {
 public:
+    using NavigateToPose = nav2_msgs::action::NavigateToPose;
+    using GoalHandleNavigateToPose = rclcpp_action::ClientGoalHandle<NavigateToPose>;
+
     GoToPose(const std::string& name, const NodeConfig& config,
              rclcpp::Node::SharedPtr node, std::shared_ptr<tf2_ros::Buffer> tf_buffer)
-      : StatefulActionNode(name, config), node_(node), tf_buffer_(tf_buffer)
+      : StatefulActionNode(name, config), node_(node), tf_buffer_(tf_buffer),
+        goal_done_(false), goal_result_available_(false), goal_succeeded_(false)
     {
-        vel_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
-        scan_sub_ = node_->create_subscription<sensor_msgs::msg::LaserScan>(
-            "scan", rclcpp::SensorDataQoS(),
-            std::bind(&GoToPose::scan_callback, this, std::placeholders::_1));
+        // Create the action client
+        action_client_ = rclcpp_action::create_client<NavigateToPose>(node_, "navigate_to_pose");
     }
 
     static PortsList providedPorts()
@@ -653,16 +657,81 @@ public:
             return NodeStatus::FAILURE;
         }
 
-        target_pose_ = target;
-        start_time_ = std::chrono::steady_clock::now();
-        avoidance_cycles_ = 0;
-        last_distance_ = std::numeric_limits<double>::max();
-        stuck_counter_ = 0;
+        // Wait for action server
+        if (!action_client_->wait_for_action_server(std::chrono::seconds(5))) {
+            RCLCPP_ERROR(node_->get_logger(), "GoToPose: NavigateToPose action server not available");
+            return NodeStatus::FAILURE;
+        }
 
-        RCLCPP_INFO(node_->get_logger(), "=== GoToPose STARTED: target at (%.2f, %.2f) in frame %s ===",
-                    target_pose_.pose.position.x,
-                    target_pose_.pose.position.y,
-                    target_pose_.header.frame_id.c_str());
+        // Prepare the goal
+        auto goal_msg = NavigateToPose::Goal();
+        goal_msg.pose = target;
+        goal_msg.pose.header.stamp = node_->now();
+
+        // Ensure frame_id is set
+        if (goal_msg.pose.header.frame_id.empty()) {
+            goal_msg.pose.header.frame_id = "map";
+        }
+
+        RCLCPP_INFO(node_->get_logger(), "=== GoToPose (Nav2) STARTED: target at (%.2f, %.2f) in frame %s ===",
+                    goal_msg.pose.pose.position.x,
+                    goal_msg.pose.pose.position.y,
+                    goal_msg.pose.header.frame_id.c_str());
+
+        // Reset state
+        goal_done_ = false;
+        goal_result_available_ = false;
+        goal_succeeded_ = false;
+
+        // Send goal options
+        auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
+
+        send_goal_options.goal_response_callback =
+            [this](const GoalHandleNavigateToPose::SharedPtr & goal_handle) {
+                if (!goal_handle) {
+                    RCLCPP_ERROR(node_->get_logger(), "GoToPose: Goal was rejected by server");
+                    goal_done_ = true;
+                    goal_succeeded_ = false;
+                } else {
+                    RCLCPP_INFO(node_->get_logger(), "GoToPose: Goal accepted by server");
+                }
+            };
+
+        send_goal_options.feedback_callback =
+            [this](GoalHandleNavigateToPose::SharedPtr,
+                   const std::shared_ptr<const NavigateToPose::Feedback> feedback) {
+                double dist = feedback->distance_remaining;
+                RCLCPP_INFO_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+                                     "GoToPose: Distance remaining: %.2f m", dist);
+            };
+
+        send_goal_options.result_callback =
+            [this](const GoalHandleNavigateToPose::WrappedResult & result) {
+                goal_result_available_ = true;
+                goal_done_ = true;
+                switch (result.code) {
+                    case rclcpp_action::ResultCode::SUCCEEDED:
+                        RCLCPP_INFO(node_->get_logger(), "GoToPose: Goal reached successfully!");
+                        goal_succeeded_ = true;
+                        break;
+                    case rclcpp_action::ResultCode::ABORTED:
+                        RCLCPP_ERROR(node_->get_logger(), "GoToPose: Goal was aborted");
+                        goal_succeeded_ = false;
+                        break;
+                    case rclcpp_action::ResultCode::CANCELED:
+                        RCLCPP_WARN(node_->get_logger(), "GoToPose: Goal was canceled");
+                        goal_succeeded_ = false;
+                        break;
+                    default:
+                        RCLCPP_ERROR(node_->get_logger(), "GoToPose: Unknown result code");
+                        goal_succeeded_ = false;
+                        break;
+                }
+            };
+
+        // Send the goal
+        goal_handle_future_ = action_client_->async_send_goal(goal_msg, send_goal_options);
+        start_time_ = std::chrono::steady_clock::now();
 
         return NodeStatus::RUNNING;
     }
@@ -672,225 +741,52 @@ public:
         // Timeout check (180 seconds / 3 minutes)
         auto elapsed = std::chrono::steady_clock::now() - start_time_;
         if (elapsed > std::chrono::seconds(180)) {
-            RCLCPP_ERROR(node_->get_logger(), "GoToPose timeout after 180 seconds");
-            stopRobot();
+            RCLCPP_ERROR(node_->get_logger(), "GoToPose: Timeout after 180 seconds, canceling goal");
+            cancelGoal();
             return NodeStatus::FAILURE;
         }
 
-        // Get current robot pose in map frame
-        geometry_msgs::msg::TransformStamped transform;
-        try {
-            transform = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
-        } catch (const tf2::TransformException & ex) {
-            RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
-                                 "Waiting for TF map->base_link: %s", ex.what());
-            return NodeStatus::RUNNING;
-        }
-
-        double robot_x = transform.transform.translation.x;
-        double robot_y = transform.transform.translation.y;
-
-        // Get robot yaw
-        tf2::Quaternion q_robot(
-            transform.transform.rotation.x,
-            transform.transform.rotation.y,
-            transform.transform.rotation.z,
-            transform.transform.rotation.w);
-        tf2::Matrix3x3 m(q_robot);
-        double roll, pitch, robot_yaw;
-        m.getRPY(roll, pitch, robot_yaw);
-
-        // Get target yaw
-        tf2::Quaternion q_target(
-            target_pose_.pose.orientation.x,
-            target_pose_.pose.orientation.y,
-            target_pose_.pose.orientation.z,
-            target_pose_.pose.orientation.w);
-        tf2::Matrix3x3 m_target(q_target);
-        double target_roll, target_pitch, target_yaw;
-        m_target.getRPY(target_roll, target_pitch, target_yaw);
-
-        // Calculate distance and angle to target
-        double dx = target_pose_.pose.position.x - robot_x;
-        double dy = target_pose_.pose.position.y - robot_y;
-        double distance = std::sqrt(dx*dx + dy*dy);
-        double angle_to_target = std::atan2(dy, dx);
-
-        // Calculate heading error
-        double heading_error = angle_to_target - robot_yaw;
-        // Normalize to [-pi, pi]
-        while (heading_error > M_PI) heading_error -= 2.0 * M_PI;
-        while (heading_error < -M_PI) heading_error += 2.0 * M_PI;
-
-        RCLCPP_INFO_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
-                             "GoToPose: Distance: %.2fm, Heading: %.2f rad", distance, heading_error);
-
-        // Check if we've reached the goal
-        if (distance < POSITION_TOLERANCE) {
-            // Check orientation error
-            double orientation_error = target_yaw - robot_yaw;
-            while (orientation_error > M_PI) orientation_error -= 2.0 * M_PI;
-            while (orientation_error < -M_PI) orientation_error += 2.0 * M_PI;
-
-            if (std::abs(orientation_error) < ORIENTATION_TOLERANCE) {
-                RCLCPP_INFO(node_->get_logger(), "GoToPose succeeded! Reached target.");
-                stopRobot();
+        // Check if the goal is done
+        if (goal_done_) {
+            if (goal_succeeded_) {
                 return NodeStatus::SUCCESS;
-            }
-
-            // Rotate in place to final orientation
-            auto twist = geometry_msgs::msg::Twist();
-            twist.linear.x = 0.0;
-            twist.angular.z = std::clamp(K_THETA * orientation_error, -MAX_ANGULAR_VEL, MAX_ANGULAR_VEL);
-            vel_pub_->publish(twist);
-            return NodeStatus::RUNNING;
-        }
-
-        // Check for obstacles in front
-        bool obstacle_ahead = checkObstacle();
-
-        auto twist = geometry_msgs::msg::Twist();
-
-        if (obstacle_ahead) {
-            avoidance_cycles_++;
-            
-            // If we're very close to goal, accept it as success despite obstacle
-            if (distance < POSITION_TOLERANCE * 1.5) {
-                RCLCPP_INFO(node_->get_logger(), "GoToPose: Close enough to goal (%.2fm) despite obstacle", distance);
-                stopRobot();
-                return NodeStatus::SUCCESS;
-            }
-            
-            // Check left and right clearance for smarter avoidance
-            auto left_clear = checkSectorClearance(-60, -30);   // Left side
-            auto right_clear = checkSectorClearance(30, 60);    // Right side
-            
-            // Choose direction that's both clear AND closer to goal heading
-            double turn_direction;
-            if (left_clear > right_clear + 0.2) {
-                turn_direction = 1.0;  // Turn left
-            } else if (right_clear > left_clear + 0.2) {
-                turn_direction = -1.0; // Turn right
             } else {
-                // If similar clearance, turn toward goal
-                turn_direction = (heading_error > 0) ? 1.0 : -1.0;
-            }
-            
-            RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
-                                 "Obstacle! Turning %s (L:%.2f R:%.2f)",
-                                 turn_direction > 0 ? "LEFT" : "RIGHT", left_clear, right_clear);
-            
-            twist.linear.x = 0.0;
-            twist.angular.z = turn_direction * MAX_ANGULAR_VEL * 0.7;
-        } else {
-            avoidance_cycles_ = 0;  // Reset avoidance counter when clear
-            
-            // First, align heading if we're not pointing at the target
-            if (std::abs(heading_error) > HEADING_THRESHOLD) {
-                // Turn towards target
-                twist.linear.x = 0.08;  // Very slow forward while turning
-                twist.angular.z = std::clamp(K_THETA * heading_error, -MAX_ANGULAR_VEL, MAX_ANGULAR_VEL);
-            } else {
-                // Move forward with proportional control
-                double linear_vel = std::min(K_LINEAR * distance, MAX_LINEAR_VEL);
-                double angular_vel = std::clamp(K_THETA * heading_error, -MAX_ANGULAR_VEL, MAX_ANGULAR_VEL);
-
-                twist.linear.x = linear_vel;
-                twist.angular.z = angular_vel;
+                return NodeStatus::FAILURE;
             }
         }
 
-        vel_pub_->publish(twist);
         return NodeStatus::RUNNING;
     }
 
     void onHalted() override {
-        stopRobot();
+        RCLCPP_WARN(node_->get_logger(), "GoToPose: Halted, canceling navigation goal");
+        cancelGoal();
     }
 
 private:
-    void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
-        latest_scan_ = msg;
-    }
-
-    bool checkObstacle() {
-        if (!latest_scan_) {
-            return false;
-        }
-
-        // Check front sector (±30°) for obstacles
-        int n_ranges = latest_scan_->ranges.size();
-        float min_dist = std::numeric_limits<float>::max();
-
-        for (int deg = -30; deg <= 30; ++deg) {
-            float angle_rad = deg * M_PI / 180.0;
-            int idx = static_cast<int>((angle_rad - latest_scan_->angle_min) / latest_scan_->angle_increment);
-
-            if (idx >= 0 && idx < n_ranges) {
-                float r = latest_scan_->ranges[idx];
-                if (!std::isinf(r) && !std::isnan(r) &&
-                    r > latest_scan_->range_min && r < latest_scan_->range_max) {
-                    min_dist = std::min(min_dist, r);
-                }
+    void cancelGoal() {
+        if (action_client_ && !goal_done_) {
+            // Try to cancel the goal
+            try {
+                auto future = action_client_->async_cancel_all_goals();
+                // Don't wait for result - just fire and forget
+                RCLCPP_INFO(node_->get_logger(), "GoToPose: Cancel request sent");
+            } catch (const std::exception& e) {
+                RCLCPP_WARN(node_->get_logger(), "GoToPose: Failed to cancel goal: %s", e.what());
             }
         }
-
-        return min_dist < OBSTACLE_THRESHOLD;
+        goal_done_ = true;
     }
-    
-    float checkSectorClearance(int start_deg, int end_deg) {
-        if (!latest_scan_) {
-            return 10.0f;
-        }
-        
-        int n_ranges = latest_scan_->ranges.size();
-        float min_dist = std::numeric_limits<float>::max();
-        
-        for (int deg = start_deg; deg <= end_deg; ++deg) {
-            float angle_rad = deg * M_PI / 180.0;
-            int idx = static_cast<int>((angle_rad - latest_scan_->angle_min) / latest_scan_->angle_increment);
-            
-            if (idx >= 0 && idx < n_ranges) {
-                float r = latest_scan_->ranges[idx];
-                if (!std::isinf(r) && !std::isnan(r) &&
-                    r > latest_scan_->range_min && r < latest_scan_->range_max) {
-                    min_dist = std::min(min_dist, r);
-                }
-            }
-        }
-        
-        return (min_dist == std::numeric_limits<float>::max()) ? 10.0f : min_dist;
-    }
-
-    void stopRobot() {
-        auto twist = geometry_msgs::msg::Twist();
-        twist.linear.x = 0.0;
-        twist.angular.z = 0.0;
-        vel_pub_->publish(twist);
-    }
-
-    // Control parameters
-    static constexpr double K_LINEAR = 0.3;           // Linear velocity gain
-    static constexpr double K_THETA = 1.2;            // Angular velocity gain
-    static constexpr double MAX_LINEAR_VEL = 0.15;    // Max forward speed (m/s) - reduced for safer approach
-    static constexpr double MAX_ANGULAR_VEL = 0.5;    // Max rotation speed (rad/s) - reduced for smoother turns
-    static constexpr double POSITION_TOLERANCE = 0.25; // Position tolerance (m) - increased for approach goals
-    static constexpr double ORIENTATION_TOLERANCE = 0.15; // Orientation tolerance (rad)
-    static constexpr double HEADING_THRESHOLD = 0.3;  // Threshold to align before moving (rad)
-    static constexpr double OBSTACLE_THRESHOLD = 0.45; // Distance to consider obstacle (m)
-    static constexpr int MAX_AVOIDANCE_CYCLES = 20;   // Max cycles in obstacle avoidance before declaring stuck
 
     rclcpp::Node::SharedPtr node_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr vel_pub_;
-    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
-    sensor_msgs::msg::LaserScan::SharedPtr latest_scan_;
+    rclcpp_action::Client<NavigateToPose>::SharedPtr action_client_;
+    std::shared_future<GoalHandleNavigateToPose::SharedPtr> goal_handle_future_;
 
-    geometry_msgs::msg::PoseStamped target_pose_;
     std::chrono::steady_clock::time_point start_time_;
-    int avoidance_cycles_;
-    double last_distance_;
-    int stuck_counter_;
+    std::atomic<bool> goal_done_;
+    std::atomic<bool> goal_result_available_;
+    std::atomic<bool> goal_succeeded_;
 };
 
 // ----------------------------------------------------------------------------
