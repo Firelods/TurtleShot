@@ -42,7 +42,7 @@ Each subpackage contains its own README for detailed usage and API.
 ```bash
 cd ~/TurtleShot
 source /opt/ros/humble/setup.bash
-colcon build --packages-select catapaf_interfaces catapaf_description catapaf_gazebo catapaf_bt distance_to_pwm video_to_ai
+colcon build --packages-select catapaf_interfaces catapaf_gazebo catapaf_bt distance_to_pwm video_to_ai
 source install/setup.bash
 ```
 
