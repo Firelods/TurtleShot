@@ -1,0 +1,88 @@
+<root BTCPP_format="4">
+    <BehaviorTree ID="MainTree">
+        <Sequence>
+             <!-- Step 1: Search for and detect human -->
+             <!-- Parallel node runs both RandomWalk and human detection simultaneously -->
+             <!-- SuccessOnOne: If human is detected (Retry succeeds), Parallel succeeds and halts RandomWalk -->
+             <Parallel success_count="1" failure_count="1">
+                 <RetryUntilSuccessful num_attempts="-1">
+                     <DetectHumanWithBall output_pose="{human_pose}" is_detected="{human_found}"/>
+                 </RetryUntilSuccessful>
+                 <RandomWalk/>
+             </Parallel>
+
+             <!-- Step 2: Stop after detection -->
+             <StopRobot/>
+
+             <Wait duration="5"/>
+
+             <!-- Step 3: Go to human (using the detected pose, no re-detection) -->
+             <GoToPose target="{human_pose}"/>
+
+             <!-- Step 4: Stop at human -->
+             <StopRobot/>
+
+             <Wait duration="15"/>
+
+             <!-- Step 5: Step back -->
+             <StepBack distance="0.5"/>
+
+             <StopRobot/>
+
+             <Wait duration="5"/>
+
+             <!-- Step 6: Turn 180 degrees -->
+             <TurnInPlace angle="3.14159"/>
+
+             <!-- Step 7: Stop after turning -->
+             <StopRobot/>
+
+             <Wait duration="5"/>
+
+             <!-- Step 8: Get Trash position from World -->
+             <GetTrashPose output_pose="{trash_pose}"/>
+
+             <!-- Step 9: Go to trash -->
+             <GoToPose target="{trash_pose}"/>
+
+             <!-- Step 10: Stop at trash -->
+             <StopRobot/>
+
+             <!-- Step 11: Trigger arm -->
+             <TriggerArm/>
+        </Sequence>
+    </BehaviorTree>
+
+    <!-- Definition of custom nodes for Groot2 visualization -->
+    <TreeNodesModel>
+        <Action ID="DetectTrashCan">
+            <output_port name="output_pose">Pose of the detected trashcan</output_port>
+            <output_port name="is_detected">Boolean flag if detected</output_port>
+        </Action>
+        <Action ID="DetectHumanWithBall">
+            <output_port name="output_pose">Pose of the human with ball</output_port>
+            <output_port name="is_detected">Boolean flag if detected</output_port>
+        </Action>
+        <Action ID="GoToPose">
+            <input_port name="target">Target 3D Pose</input_port>
+        </Action>
+        <Action ID="StopRobot"/>
+        <Action ID="Wait">
+            <input_port name="duration">Duration in seconds</input_port>
+        </Action>
+        <Action ID="GetPatrolPoint">
+            <output_port name="output_pose">Next patrol waypoint pose</output_port>
+        </Action>
+        <Action ID="RandomWalk"/>
+        <Action ID="StepBack">
+            <input_port name="distance">Distance to step back in meters</input_port>
+        </Action>
+        <Action ID="TurnInPlace">
+            <input_port name="angle">Angle to turn in radians (positive = counter-clockwise)</input_port>
+        </Action>
+        <Action ID="GetTrashPose">
+            <output_port name="output_pose">Pose of the trashcan from world</output_port>
+        </Action>
+        <Action ID="TriggerArm"/>
+    </TreeNodesModel>
+</root>

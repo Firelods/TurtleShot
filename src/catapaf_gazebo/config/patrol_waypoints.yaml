@@ -1,0 +1,19 @@
+patrol_waypoints:
+  # Define waypoints for systematic patrol
+  # Format: {x: meters, y: meters, theta: radians}
+  # Adjust these based on your actual map
+  waypoints:
+    # Center area
+    - {x: 0.0, y: 0.0, theta: 0.0}
+    
+    # North area
+    - {x: 2.0, y: 2.0, theta: 1.57}
+    
+    # East area
+    - {x: 2.0, y: -2.0, theta: 0.0}
+    
+    # South area
+    - {x: -2.0, y: -2.0, theta: -1.57}
+    
+    # West area
+    - {x: -2.0, y: 2.0, theta: 3.14}

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4" project_name="Project">
+    <include path="src/catapaf_gazebo/behavior_trees/patrol_and_interact.xml"/>
+    <!-- Description of Node Models (used by Groot) -->
+    <TreeNodesModel>
+        <Action ID="DetectHumanWithBall">
+            <output_port name="output_pose">Pose of the human with ball</output_port>
+        </Action>
+        <Action ID="DetectTrashCan">
+            <output_port name="output_pose">Pose of the detected trashcan</output_port>
+        </Action>
+        <Action ID="GoToPose">
+            <input_port name="target">Target 3D Pose</input_port>
+        </Action>
+        <Action ID="RandomWalk"/>
+        <Action ID="TriggerArm"/>
+        <Action ID="Wait">
+            <input_port name="duration">Duration in seconds</input_port>
+        </Action>
+    </TreeNodesModel>
+</root>

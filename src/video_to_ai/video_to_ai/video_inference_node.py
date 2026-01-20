@@ -13,6 +13,9 @@ import json
 import traceback
 from ultralytics import YOLO
 import struct
+from catapaf_interfaces.srv import GetDetection
+from geometry_msgs.msg import PoseStamped
+
 
 class VideoInferenceNode(Node):
     def __init__(self):
@@ -67,7 +70,70 @@ class VideoInferenceNode(Node):
 
         self.get_logger().info("video_inference_node started")
 
+        self.latest_detections = []
+        self.detection_service = self.create_service(
+            GetDetection, 
+            'get_detection', 
+            self.handle_get_detection
+        )
+
+        self.last_cloud_publish_time = self.get_clock().now()
+    
+    def handle_get_detection(self, request, response):
+        target_label = request.label.lower()
+        self.get_logger().info(f"Requête de détection pour : {target_label}")
+
+        best_detection = None
+        max_score = -1.0
+
+        for det in self.latest_detections:
+            # Check similarity or exact match
+            # "human" in "human" -> True
+            # "person" in "human" -> False (unless aliased)
+            lbl = det['label'].lower()
+            if target_label in lbl or lbl in target_label:
+                if det['score'] > max_score:
+                    max_score = det['score']
+                    best_detection = det
+
+        if best_detection:
+            # Log detection with 3D position status
+            pos_3d = best_detection['position_3d']
+            self.get_logger().info(f"Détection 2D trouvée: {best_detection['label']}, score={best_detection['score']:.2f}, 3D: x={pos_3d['x']}, y={pos_3d['y']}, z={pos_3d['z']}")
+
+            if pos_3d['x'] is not None:
+                response.is_detected = True
+
+                # Fill PoseStamped
+                # Note: The coordinates are camera optical frame usually.
+                # Ideally we should transform to map or base_link, but for now sending as is (or camera frame)
+                # The cloud callback usually gives points in the camera optical frame.
+
+                response.pose = PoseStamped()
+                response.pose.header.frame_id = "camera_link_optical" # Assumption, might be depth_camera_link
+                if self.latest_cloud:
+                    response.pose.header.frame_id = self.latest_cloud.header.frame_id
+
+                response.pose.header.stamp = self.get_clock().now().to_msg()
+
+                response.pose.pose.position.x = pos_3d['x']
+                response.pose.pose.position.y = pos_3d['y']
+                response.pose.pose.position.z = pos_3d['z']
+                response.pose.pose.orientation.w = 1.0
+
+                self.get_logger().info(f"Trouvé {target_label} à ({response.pose.pose.position.x:.2f}, {response.pose.pose.position.y:.2f}, {response.pose.pose.position.z:.2f})")
+            else:
+                response.is_detected = False
+                self.get_logger().warn(f"Objet {target_label} détecté en 2D mais position 3D invalide (depth data manquant)")
+        else:
+            response.is_detected = False
+            available_labels = [d['label'] for d in self.latest_detections]
+            self.get_logger().info(f"Objet {target_label} NON trouvé. Disponibles: {available_labels}")
+
+        return response
+
     def image_callback(self, msg: Image):
+        self.get_logger().info("Image reçue, lancement de l'inférence...", throttle_duration_sec=5.0)
         try:
             frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         except Exception as e:
@@ -98,13 +164,14 @@ class VideoInferenceNode(Node):
 
     def pointcloud_callback(self, msg: PointCloud2):
         self.latest_cloud = msg
-        self.get_logger().info(f"Nuage reçu: {msg.width}x{msg.height} points", throttle_duration_sec=5.0)
+        self.get_logger().info(f"Nuage reçu: {msg.width}x{msg.height} points", throttle_duration_sec=30.0)
 
     def run_inference(self, frame, cloud_msg):
         results = self.model(frame, verbose=False)[0]
 
         h, w = frame.shape[:2]
         detections = []
+
         color_mask = np.zeros_like(frame)
         
         # Masque de segmentation
@@ -159,12 +226,17 @@ class VideoInferenceNode(Node):
                     "position_3d": pos_3d
                 })
 
-        if cloud_msg is not None:
-            self.publish_colored_cloud(cloud_msg, segmentation_mask, h, w)
+        # Point cloud coloration removed for performance
+        # if cloud_msg is not None:
+        #    if (now - self.last_cloud_publish_time).nanoseconds > 2e9: # 2 seconds
+        #        self.publish_colored_cloud(cloud_msg, segmentation_mask, h, w)
+        #        self.last_cloud_publish_time = now
         
         overlay = cv2.addWeighted(frame, 0.6, color_mask, 0.4, 0)
 
         result_dict = {"detections": detections}
+        self.latest_detections = detections # Update global latest detections
+
 
         return result_dict, overlay
     
@@ -198,8 +270,15 @@ class VideoInferenceNode(Node):
                     continue
             
             if len(points_3d) > 0:
-                median = np.median(np.array(points_3d), axis=0)
-                return {"x": float(median[0]), "y": float(median[1]), "z": float(median[2])}
+                points_np = np.array(points_3d)
+                # Use median for X and Y (centering)
+                x_med = np.median(points_np[:, 0])
+                y_med = np.median(points_np[:, 1])
+                # Use 10th percentile for Z (depth) to find the front surface
+                # Z is forward in optical frame
+                z_close = np.percentile(points_np[:, 2], 10) 
+                
+                return {"x": float(x_med), "y": float(y_med), "z": float(z_close)}
         except:
             pass
         

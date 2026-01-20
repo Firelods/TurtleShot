@@ -80,7 +80,9 @@ setup(
     entry_points={
         'console_scripts': [
             'catapaf_arm_controller = catapaf_gazebo.catapaf_arm_controller:main',
+            'arm_controller = catapaf_gazebo.arm_controller:main',
             'odom_to_tf = catapaf_gazebo.odom_to_tf:main',
+
             'ball_spawner = catapaf_gazebo.ball_spawner:main',
             'camera_tf_tuner = catapaf_gazebo.camera_tf_tuner:main',
             'autonomous_explorer = catapaf_gazebo.autonomous_explorer:main',

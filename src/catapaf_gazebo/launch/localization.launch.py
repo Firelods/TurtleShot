@@ -12,8 +12,7 @@ def generate_launch_description():
 
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
     autostart = LaunchConfiguration('autostart', default='true')
-    # Point to the existing map in TurtleShot directory by default
-    map_yaml_file = LaunchConfiguration('map', default=os.path.join(os.path.expanduser('~'), 'TurtleShot', 'my_costmap.yaml'))
+    map_yaml_file = LaunchConfiguration('map', default=os.path.expanduser('~/my_costmap.yaml'))
     params_file = LaunchConfiguration('params_file',
                                       default=os.path.join(pkg_catapaf_gazebo, 'config', 'nav2', 'nav2_params.yaml'))
     
@@ -80,13 +79,7 @@ def generate_launch_description():
                     {'z_hit': 0.5},
                     {'z_max': 0.05},
                     {'z_rand': 0.5},
-                    {'z_rand': 0.5},
-                    {'z_short': 0.05},
-                    {'set_initial_pose': True},
-                    {'initial_pose_x': 0.5},
-                    {'initial_pose_y': 0.0},
-                    {'initial_pose_z': 0.01},
-                    {'initial_pose_yaw': 0.0}])
+                    {'z_short': 0.05}])
 
     # Lifecycle manager node
     lifecycle_manager_node = Node(
@@ -114,7 +107,8 @@ def generate_launch_description():
                 package='nav2_controller',
                 plugin='nav2_controller::ControllerServer',
                 name='controller_server',
-                parameters=[params_file]), # Removed remapping to allow sharing /cmd_vel
+                parameters=[params_file],
+                remappings=[('/cmd_vel', '/cmd_vel_nav')]),
             ComposableNode(
                 package='nav2_smoother',
                 plugin='nav2_smoother::SmootherServer',
@@ -163,7 +157,7 @@ def generate_launch_description():
         
         DeclareLaunchArgument(
             'map',
-            default_value=os.path.join(os.path.expanduser('~'), 'TurtleShot', 'my_costmap.yaml'),
+            default_value=os.path.expanduser('~/my_costmap.yaml'),
             description='Full path to map yaml file to load'),
         
         DeclareLaunchArgument(

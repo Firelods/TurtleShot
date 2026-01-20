@@ -1,0 +1,7 @@
+image: my_costmap_rotated.pgm
+mode: trinary
+resolution: 0.050
+origin: [-9, -6, 0]
+negate: 0
+occupied_thresh: 0.5
+free_thresh: 0.196
