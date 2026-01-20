@@ -16,7 +16,6 @@ TurtleShot is a modular robotics software suite for simulation, control, and per
 
 ## Project Structure
 
-- `src/catapaf_description/` — Robot description (URDF/Xacro, meshes, launch)
 - `src/catapaf_gazebo/` — Gazebo Fortress simulation, launch files, models, arm controller, configs
 - `src/catapaf_bt/` — Behavior trees and C++ main for autonomous behaviors
 - `src/catapaf_interfaces/` — Custom ROS 2 service definitions
@@ -122,17 +121,13 @@ ros2 run catapaf_gazebo catapaf_arm_controller
 ### Ball Spawning
 
 ```bash
-ros2 run ros_gz_sim create -name ball_1 \
-	-file $(ros2 pkg prefix catapaf_gazebo)/share/catapaf_gazebo/models/ball/model.sdf \
-	-x -0.05 -y -0.09 -z 0.15
+ros2 run catapaf_gazebo ball_spawner
 ```
 
 ### Catapult Control
 
 ```bash
 ros2 service call /catapaf_arm/launch std_srvs/srv/Trigger
-ros2 service call /catapaf_arm/reset std_srvs/srv/Trigger
-ros2 topic pub /catapaf_arm/position std_msgs/msg/Float64 "data: -1.2"
 ```
 
 ## Troubleshooting
@@ -149,9 +144,7 @@ This repository is the main workspace for training and deploying visual segmenta
 ## Documentation
 
 - [QUICKSTART.md](QUICKSTART.md) — Step-by-step quick start guide
-- [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) — Technical migration details
 - [src/catapaf_gazebo/README.md](src/catapaf_gazebo/README.md) — Simulation package documentation
-- [SUMMARY.md](SUMMARY.md) — Project summary and migration status
 
 ---
 
