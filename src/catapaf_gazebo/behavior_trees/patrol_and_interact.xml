@@ -48,8 +48,13 @@
              <!-- Step 10: Stop at trash -->
              <StopRobot/>
 
+             <Wait duration="5"/>
+
              <!-- Step 11: Trigger arm -->
              <TriggerArm/>
+
+             <Wait duration="10"/>
+
         </Sequence>
     </BehaviorTree>
 

@@ -740,8 +740,8 @@ public:
     {
         // Timeout check (180 seconds / 3 minutes)
         auto elapsed = std::chrono::steady_clock::now() - start_time_;
-        if (elapsed > std::chrono::seconds(180)) {
-            RCLCPP_ERROR(node_->get_logger(), "GoToPose: Timeout after 180 seconds, canceling goal");
+        if (elapsed > std::chrono::seconds(300)) {
+            RCLCPP_ERROR(node_->get_logger(), "GoToPose: Timeout after 300 seconds, canceling goal");
             cancelGoal();
             return NodeStatus::FAILURE;
         }
